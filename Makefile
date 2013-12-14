@@ -1,11 +1,11 @@
 .PHONY:
-default: test.java
-	javac test.java
+default: client.java
+	javac client.java
 
 .PHONEY:
-run: test.class
-	java test
+run: client.class
+	java client
 
 .PHONY:
 clean:
-	rm -f *.java
+	rm -f *.class
