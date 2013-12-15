@@ -71,4 +71,9 @@ public class Node implements Serializable{
 	public String format(){
 		return String.format("Destination: " + this.toString() + ", ");
 	}
+	
+	/* Equality */
+	public boolean equals(Node other){
+		return (this.toString().equals(other.toString()));
+	}
 }
