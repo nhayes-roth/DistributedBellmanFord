@@ -1,6 +1,10 @@
 import java.io.*;
 import java.net.*;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashSet;
 import java.util.Hashtable;
+import java.util.Set;
 
 /*
  * File: Client.java
@@ -67,6 +71,7 @@ class Client implements Runnable {
 		}
 		setup(args);
 		startSending();
+		startListening();
 		receiveInstructions();
 	}
 	
@@ -74,8 +79,39 @@ class Client implements Runnable {
 	 * Manages the user interface: accepts commands, prints information, etc.
 	 */
 	private static void receiveInstructions() {
-		// TODO Auto-generated method stub
-		
+		BufferedReader input = new BufferedReader(new InputStreamReader(System.in));	
+		String command = "";
+		while(true){
+			try {
+				command = input.readLine().toLowerCase();
+			} catch (IOException e) {
+				System.err.println("Error encountered reading user commands.");
+				e.printStackTrace();
+				System.exit(1);
+			}
+			if (command.contains("linkdown")){
+				for (int i=0; i<command.length(); i++){
+					if (Character.isDigit(command.charAt(i))){
+						linkdown(command.substring(i));
+						break;
+					}
+				}
+			}
+			if (command.contains("linkup")){
+				for (int i=0; i<command.length(); i++){
+					if (Character.isDigit(command.charAt(i))){
+						linkup(command.substring(i));
+						break;
+					}
+				}
+			}
+			if (command.contains("showrt")){
+				showrt();
+			}
+			if (command.contains("close")){
+				close();
+			}
+		}
 		
 	}
 	
@@ -83,28 +119,70 @@ class Client implements Runnable {
 	 * Starts an independent thread to handle the regular sending of packets.
 	 */
 	private static void startSending() {
-		new Thread(new Client()).start();
+		Thread thread = new Thread(new Client()){
+			public void run() {
+				// setup the timer
+				java.util.Timer timer = new java.util.Timer();
+				java.util.TimerTask task = new java.util.TimerTask(){
+					public void run(){
+						System.out.println("sending thread fired");
+						routeUpdate();
+					}
+				};
+				timer.schedule(task, timeout, timeout);
+			}
+		};
+		thread.start();
 	}
 	
 	/*
-	 * Automatically runs when the new thread is started for sending packets.
+	 * Starts an independent thread to handle the acceptance of packets.
 	 */
-	@Override
-	public void run() {
-		// setup the timer
-		java.util.Timer timer = new java.util.Timer();
-		java.util.TimerTask task = new java.util.TimerTask(){
-			public void run(){
-				routeUpdate();
+	private static void startListening(){
+		Thread thread = new Thread(new Client()){
+			public void run() {
+				while(true){
+					byte[] buffer = new byte[576];
+					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+					try {
+						socket.receive(packet);
+					} catch (IOException e) {
+						System.err.println("Error receiving a datagram packet.");
+						e.printStackTrace();
+						System.exit(1);
+					}
+					respondToPacket(packet);
+				}
+			}
+
+			/*
+			 * Read the message and react accordingly:
+			 * 		- route update => change table and last_contact
+			 */
+			private void respondToPacket(DatagramPacket packet) {
+				Node link = new Node(packet.getAddress(), packet.getPort());
+				last_contact.put(link, System.currentTimeMillis());
+				byte[] data = packet.getData();
+				Hashtable<Node, Path> new_costs = recoverObject(data);
+				Set<Node> network = new HashSet<Node>();
+				network.addAll(estimated_costs.keySet());
+				network.addAll(new_costs.keySet());
+				for (Node node : network) {
+//					double cost = estimated_costs.get(node).cost;
+//					
+//					estimated_costs.put(key, value);
+				}
 			}
 		};
-		timer.schedule(task, timeout, timeout);
+		thread.start();
 	}
+	
+	
 
 	/*
 	 * Send a copy of the current distance estimates to all of the client's neighbors.
 	 */
-	protected void routeUpdate() {
+	protected static void routeUpdate() {
 		// construct the byte array
 		byte[] bytes = tableToBytes();
 		DatagramPacket packet = null;
@@ -157,7 +235,7 @@ class Client implements Runnable {
 	 * Recover the sent object from a byte array.
 	 */
 	@SuppressWarnings("unchecked")
-	private Hashtable recoverObject(byte[] bytes){
+	private static Hashtable recoverObject(byte[] bytes){
 		ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
 		ObjectInput in = null;
 		Object obj = null;
@@ -189,7 +267,7 @@ class Client implements Runnable {
 	 * Allows the user to destroy an existing link (i.e. change cost to infinity).
 	 * Both the current client and the specified neighbor break the connection.
 	 */
-	private static void linkdown(String remote_ip, String remote_port){
+	private static void linkdown(String destination){
 		//TODO: implement
 	}
 	
@@ -198,7 +276,7 @@ class Client implements Runnable {
 	 * destroyed it.
 	 * Both the current client and the specified neighbor restore the connection.
 	 */
-	private static void linkup(String remote_ip, String remote_port){
+	private static void linkup(String destination){
 		//TODO: implement
 	}
 	
@@ -207,14 +285,22 @@ class Client implements Runnable {
 	 * (i.e. it should indicate the cost and path used to reach that client).
 	 */
 	private static void showrt(){
-		//TODO: implement
+		StringBuilder sb = new StringBuilder();
+		sb.append(new SimpleDateFormat("hh:mm:ss").format(new Date()));
+		for (Node node : estimated_costs.keySet()){
+			sb.append("\n");
+			sb.append(node.format());
+			sb.append(estimated_costs.get(node).toString());
+		}
+		System.out.println(sb.toString());
 	}
 	
 	/*
 	 * Closes the client process.
 	 */
 	private static void close(){
-		//TODO: implement
+		socket.close();
+		System.exit(0);
 	}
 
 	/*
