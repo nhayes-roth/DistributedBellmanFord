@@ -37,14 +37,6 @@ import java.util.Set;
  * neighbors. The clients wait on their sockets 
  * until their distance vector changes or until TIMEOUT seconds pass, whichever 
  * arrives sooner, and then transmit their distance vectors to all neighbors.
- * 
- * Link failures is also assumed when a client doesn’t receive a ROUTE UPDATE 
- * message from a neighbor (i.e., hasn’t ‘heard’ from a neighbor) for 3*TIMEOUT 
- * seconds. This happens when the neighbor client crashes or if the user calls the 
- * CLOSE command for it. When this happens, the link cost should be set to infinity 
- * and the client should stop sending ROUTE UPDATE messages to that neighbor. 
- * The link is assumed to be dead until the process comes up and a ROUTE UPDATE 
- * message is received again from that neighbor. 	
  */
 
 class Client implements Runnable {
@@ -234,6 +226,12 @@ class Client implements Runnable {
 		neighbor_timers.put(source, System.currentTimeMillis());
 		// update neighbors table
 		Node self = new Node(ip_address, port_number);
+		System.out.println("Source" + source.toString());
+		System.out.println("Self" + self.toString());
+		System.out.println("Sent table --");
+		for (Node key : table.keySet()){
+			System.out.println("\t" + key.format() + table.get(key).toString());
+		}
 		Path path = new Path(table.get(self).cost, source);
 		neighbors.put(source, path);
 		updateDistances();
