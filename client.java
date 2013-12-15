@@ -54,8 +54,9 @@ class Client implements Runnable {
 	private static int port_number;
 	private static DatagramSocket socket;
 	private static long timeout;
-	private static Hashtable<Node, Path> original_costs = new Hashtable<Node, Path>();
-	private static Hashtable<Node, Path> estimated_costs = new Hashtable<Node, Path>();
+	private static Hashtable<Node, Path> neighbors = new Hashtable<Node, Path>();
+	private static Hashtable<Node, Path> distance = new Hashtable<Node, Path>();
+	private static Hashtable<Node, Path> before_linkdown = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Long> last_contact = new Hashtable<Node, Long>();
 
 	/* Main Method */
@@ -141,18 +142,26 @@ class Client implements Runnable {
 	private static void startListening(){
 		Thread thread = new Thread(new Client()){
 			public void run() {
-				while(true){
-					byte[] buffer = new byte[576];
-					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-					try {
-						socket.receive(packet);
-					} catch (IOException e) {
-						System.err.println("Error receiving a datagram packet.");
-						e.printStackTrace();
-						System.exit(1);
+				// setup the timer
+				java.util.Timer timer = new java.util.Timer();
+				java.util.TimerTask task = new java.util.TimerTask(){
+					public void run(){
+						System.out.println("Listening thread is working");
 					}
-					respondToPacket(packet);
-				}
+				};
+				timer.schedule(task, 2*timeout, 2*timeout);
+//				while(true){
+//					byte[] buffer = new byte[576];
+//					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+//					try {
+//						socket.receive(packet);
+//					} catch (IOException e) {
+//						System.err.println("Error receiving a datagram packet.");
+//						e.printStackTrace();
+//						System.exit(1);
+//					}
+//					respondToPacket(packet);
+//				}
 			}
 
 			/*
@@ -165,7 +174,7 @@ class Client implements Runnable {
 				byte[] data = packet.getData();
 				Hashtable<Node, Path> new_costs = recoverObject(data);
 				Set<Node> network = new HashSet<Node>();
-				network.addAll(estimated_costs.keySet());
+				network.addAll(distance.keySet());
 				network.addAll(new_costs.keySet());
 				for (Node node : network) {
 //					double cost = estimated_costs.get(node).cost;
@@ -187,7 +196,7 @@ class Client implements Runnable {
 		byte[] bytes = tableToBytes();
 		DatagramPacket packet = null;
 		// send it to each neighbor
-		for (Node neighbor : original_costs.keySet()){
+		for (Node neighbor : neighbors.keySet()){
 			packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
 			try {
 				socket.send(packet);
@@ -208,7 +217,7 @@ class Client implements Runnable {
 		byte[] bytes = null;
 		try {
 			out = new ObjectOutputStream(stream);
-			out.writeObject(estimated_costs);
+			out.writeObject(distance);
 			bytes = stream.toByteArray();
 		} catch (IOException e) {
 			System.err.println("Error writing table to bytes");
@@ -287,10 +296,10 @@ class Client implements Runnable {
 	private static void showrt(){
 		StringBuilder sb = new StringBuilder();
 		sb.append(new SimpleDateFormat("hh:mm:ss").format(new Date()));
-		for (Node node : estimated_costs.keySet()){
+		for (Node node : distance.keySet()){
 			sb.append("\n");
 			sb.append(node.format());
-			sb.append(estimated_costs.get(node).toString());
+			sb.append(distance.get(node).toString());
 		}
 		System.out.println(sb.toString());
 	}
@@ -338,10 +347,10 @@ class Client implements Runnable {
 			// put into table
 			Node destination = new Node(args[i] + ":" + args[i+1]);
 			Path cost = new Path(Double.parseDouble(args[i+2]), destination.toString());
-			original_costs.put(destination, cost);	
+			neighbors.put(destination, cost);	
 		}
 		// set estimated costs to original costs at beginning
-		estimated_costs = original_costs;
+		distance = neighbors;
 	}
 
 	/*
@@ -355,6 +364,13 @@ class Client implements Runnable {
         				   "[remote_ip1] [remote_port1] [weight1] ...");
 		System.err.println("##############################################\n");
         System.exit(1);
+		
+	}
+
+	@Override
+	public void run() {
+		// TODO Auto-generated method stub
+		System.out.println("Hopefully, this won't print");
 		
 	}
 }
