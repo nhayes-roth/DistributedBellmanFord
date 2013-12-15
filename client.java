@@ -55,6 +55,7 @@ class Client implements Runnable {
 	private static int port_number;
 	private static DatagramSocket socket;
 	private static long timeout;
+	private static Set<Node> network = new HashSet<Node>();
 	private static Hashtable<Node, Path> neighbors = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Path> distance = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Path> before_linkdown = new Hashtable<Node, Path>();
@@ -72,11 +73,12 @@ class Client implements Runnable {
 					"4.1"};
 		}
 		setup(args);
+		startTimers();
 		startSending();
 		startListening();
 		receiveInstructions();
 	}
-	
+
 	/*
 	 * Manages the user interface: accepts commands, prints information, etc.
 	 */
@@ -309,6 +311,63 @@ class Client implements Runnable {
 		socket.close();
 		System.exit(0);
 	}
+	
+	/*
+	 * Fills out the neighbor_timers table and starts an independent thread to
+	 * periodically check it.
+	 */
+	private static void startTimers() {
+		long time = System.currentTimeMillis();
+		for (Node n : neighbors.keySet()){
+			neighbor_timers.put(n, time);
+		}
+		Thread thread = new Thread(new Client()){
+			public void run() {
+				// setup the timer
+				java.util.Timer timer = new java.util.Timer();
+				java.util.TimerTask task = new java.util.TimerTask(){
+					public void run(){
+						if(debug){
+							System.out.println("DEBUG - neighbor_timer thread fired.");	
+						}
+						checkNeighborTimers();
+					}
+
+					/*
+					 * Checks the neighbor_timers table to see if anyone has
+					 * expired.
+					 */
+					private void checkNeighborTimers() {
+						long current_time = System.currentTimeMillis();
+						for (Node n : neighbor_timers.keySet()){
+							long elapsed = current_time - neighbor_timers.get(n);
+							if (elapsed >= 3*timeout){
+								removeNeighbor(n);
+							}
+						}
+						
+					}
+				};
+				timer.schedule(task, 1000, 1000);
+			}
+		};
+		thread.start();
+	}
+	
+	/*
+	 * Removes a neighbor from this client's network, distance, and neighbors
+	 * and calls routeUpdate.
+	 */
+	private static void removeNeighbor(Node n) {
+		if (debug){
+			System.out.println("DEBUG - removed neighbor " + n.toString());
+		}
+		network.remove(n);
+		distance.remove(n);
+		neighbors.remove(n);
+		neighbor_timers.remove(n);
+		routeUpdate();
+	}
 
 	/*
 	 * Check the format of command line arguments for correct form. If correct,
@@ -331,7 +390,7 @@ class Client implements Runnable {
 				System.exit(1);
 			}
 		}
-		// create hashtables
+		// create neighbors, distance, and network
 		for (int i=2; i<args.length; i=i+3){
 			// check formatting
 			try {
@@ -342,14 +401,13 @@ class Client implements Runnable {
 				chastise("improper arguments for neighbor " + i);
 				System.exit(1);
 			}
-			// put into table
+			// put into tables
 			Node destination = new Node(args[i] + ":" + args[i+1]);
 			Path cost = new Path(Double.parseDouble(args[i+2]), destination.toString());
-			neighbors.put(destination, cost);	
+			neighbors.put(destination, cost);
+			distance.put(destination, cost);
+			network.add(destination);
 		}
-		// set estimated costs to original costs at beginning
-		distance = neighbors;
-		
 	}
 
 	/*
