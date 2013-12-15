@@ -1,10 +1,10 @@
 .PHONY:
-default: client.java
-	javac client.java
+default: Client.java
+	javac Client.java
 
-.PHONEY:
-run: client.class
-	java client
+.PHONY:
+run: Client.class
+	java Client 1 1 1 1 1
 
 .PHONY:
 clean:
