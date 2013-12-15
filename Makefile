@@ -1,10 +1,6 @@
 .PHONY:
-default: Client.java
-	javac Client.java
-
-.PHONY:
-run: Client.class
-	java Client 1 1 1 1 1
+default: Client.java Node.java Path.java
+	javac *.java
 
 .PHONY:
 clean:
