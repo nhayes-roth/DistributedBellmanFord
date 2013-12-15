@@ -226,12 +226,15 @@ class Client implements Runnable {
 		neighbor_timers.put(source, System.currentTimeMillis());
 		// update neighbors table
 		Node self = new Node(ip_address, port_number);
-		System.out.println("Source" + source.toString());
-		System.out.println("Self" + self.toString());
-		System.out.println("Sent table --");
+		// TODO: remove these
+		System.out.println("Source: " + source.toString());
+		System.out.println("Self: " + self.toString());
+		System.out.println("Received Table --");
 		for (Node key : table.keySet()){
 			System.out.println("\t" + key.format() + table.get(key).toString());
 		}
+		System.out.println("PLEASE:");
+		System.out.println(table.get(new Node(self.toString())));
 		Path path = new Path(table.get(self).cost, source);
 		neighbors.put(source, path);
 		updateDistances();
@@ -516,7 +519,9 @@ class Client implements Runnable {
 		// create local client
 		else {
 			try {
-				ip_address = InetAddress.getLocalHost().getHostAddress();
+				ip_address = "127.0.0.1";
+//				TODO: fix this
+//				ip_address = InetAddress.getLocalHost().getHostAddress();
 				port_number = Integer.parseInt(args[0]);
 				socket = new DatagramSocket(Integer.parseInt(args[0]));
 				timeout = Long.parseLong(args[1])*1000;
