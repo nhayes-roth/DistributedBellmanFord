@@ -50,6 +50,7 @@ import java.util.Set;
 class Client implements Runnable {
 
 	/* Class Variables */
+	private static boolean debug = true;
 	private static String ip_address;
 	private static int port_number;
 	private static DatagramSocket socket;
@@ -57,12 +58,12 @@ class Client implements Runnable {
 	private static Hashtable<Node, Path> neighbors = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Path> distance = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Path> before_linkdown = new Hashtable<Node, Path>();
-	private static Hashtable<Node, Long> last_contact = new Hashtable<Node, Long>();
+	private static Hashtable<Node, Long> neighbor_timers = new Hashtable<Node, Long>();
 
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
 		// TODO: remove this before submission
-		if (args.length == 0){
+		if (args.length == 0 && debug == true){
 			args = new String[]{
 					"20000", 
 					"2", 
@@ -126,7 +127,9 @@ class Client implements Runnable {
 				java.util.Timer timer = new java.util.Timer();
 				java.util.TimerTask task = new java.util.TimerTask(){
 					public void run(){
-						System.out.println("sending thread fired");
+						if(debug){
+							System.out.println("DEBUG - Sending thread fired.");	
+						}
 						routeUpdate();
 					}
 				};
@@ -142,26 +145,21 @@ class Client implements Runnable {
 	private static void startListening(){
 		Thread thread = new Thread(new Client()){
 			public void run() {
-				// setup the timer
-				java.util.Timer timer = new java.util.Timer();
-				java.util.TimerTask task = new java.util.TimerTask(){
-					public void run(){
-						System.out.println("Listening thread is working");
+				while(true){
+					byte[] buffer = new byte[576];
+					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+					try {
+						socket.receive(packet);
+					} catch (IOException e) {
+						System.err.println("Error receiving a datagram packet.");
+						e.printStackTrace();
+						System.exit(1);
 					}
-				};
-				timer.schedule(task, 2*timeout, 2*timeout);
-//				while(true){
-//					byte[] buffer = new byte[576];
-//					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-//					try {
-//						socket.receive(packet);
-//					} catch (IOException e) {
-//						System.err.println("Error receiving a datagram packet.");
-//						e.printStackTrace();
-//						System.exit(1);
-//					}
-//					respondToPacket(packet);
-//				}
+					if(debug){
+						System.out.println("DEBUG - packet received.");
+					}
+					respondToPacket(packet);
+				}
 			}
 
 			/*
@@ -170,7 +168,7 @@ class Client implements Runnable {
 			 */
 			private void respondToPacket(DatagramPacket packet) {
 				Node link = new Node(packet.getAddress(), packet.getPort());
-				last_contact.put(link, System.currentTimeMillis());
+				neighbor_timers.put(link, System.currentTimeMillis());
 				byte[] data = packet.getData();
 				Hashtable<Node, Path> new_costs = recoverObject(data);
 				Set<Node> network = new HashSet<Node>();
@@ -333,7 +331,7 @@ class Client implements Runnable {
 				System.exit(1);
 			}
 		}
-		// create both routing tables
+		// create hashtables
 		for (int i=2; i<args.length; i=i+3){
 			// check formatting
 			try {
@@ -351,6 +349,7 @@ class Client implements Runnable {
 		}
 		// set estimated costs to original costs at beginning
 		distance = neighbors;
+		
 	}
 
 	/*
@@ -370,7 +369,9 @@ class Client implements Runnable {
 	@Override
 	public void run() {
 		// TODO Auto-generated method stub
-		System.out.println("Hopefully, this won't print");
+		if(debug){
+			System.out.println("This should never print.");			
+		}
 		
 	}
 }
