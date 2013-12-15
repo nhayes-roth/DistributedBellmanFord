@@ -46,13 +46,13 @@ import java.util.Hashtable;
 class Client implements Runnable {
 
 	/* Class Variables */
-	private static String ip_address;				// TODO: maybe just store string?
-	private static int port_number;					// TODO: do i need this?
-	private static DatagramSocket read_socket;
-	private static DatagramSocket write_socket;
+	private static String ip_address;
+	private static int port_number;
+	private static DatagramSocket socket;
 	private static long timeout;
 	private static Hashtable<Node, Path> original_costs = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Path> estimated_costs = new Hashtable<Node, Path>();
+	private static Hashtable<Node, Long> last_contact = new Hashtable<Node, Long>();
 
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
@@ -68,8 +68,6 @@ class Client implements Runnable {
 		setup(args);
 		startSending();
 		receiveInstructions();
-		while(true){
-		}
 	}
 	
 	/*
@@ -78,8 +76,9 @@ class Client implements Runnable {
 	private static void receiveInstructions() {
 		// TODO Auto-generated method stub
 		
+		
 	}
-
+	
 	/*
 	 * Starts an independent thread to handle the regular sending of packets.
 	 */
@@ -112,6 +111,13 @@ class Client implements Runnable {
 		// send it to each neighbor
 		for (Node neighbor : original_costs.keySet()){
 			packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
+			try {
+				socket.send(packet);
+			} catch (IOException e) {
+				System.err.println("Error delivering packet during routeUpdate");
+				e.printStackTrace();
+				System.exit(1);
+			}
 		}
 	}
 	
@@ -123,7 +129,7 @@ class Client implements Runnable {
 		ObjectOutput out = null;
 		byte[] bytes = null;
 		try {
-			out = new ObjectOutputStream(stream);   
+			out = new ObjectOutputStream(stream);
 			out.writeObject(estimated_costs);
 			bytes = stream.toByteArray();
 		} catch (IOException e) {
@@ -223,9 +229,9 @@ class Client implements Runnable {
 		// create local client
 		else {
 			try {
-				// TODO: make sure this gives the literal IP and not the hostname/IP
-				ip_address = InetAddress.getLocalHost().toString();
+				ip_address = InetAddress.getLocalHost().getHostAddress();
 				port_number = Integer.parseInt(args[0]);
+				socket = new DatagramSocket(Integer.parseInt(args[0]));
 				timeout = Long.parseLong(args[1])*1000;
 			} catch (Exception e) {
 				chastise("improper local process arguments");
@@ -248,8 +254,8 @@ class Client implements Runnable {
 			Path cost = new Path(Double.parseDouble(args[i+2]), destination.toString());
 			original_costs.put(destination, cost);	
 		}
+		// set estimated costs to original costs at beginning
 		estimated_costs = original_costs;
-
 	}
 
 	/*
