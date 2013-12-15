@@ -61,7 +61,7 @@ class Client implements Runnable {
 		if (args.length == 0){
 			args = new String[]{
 					"20000", 
-					"5", 
+					"2", 
 					"localhost", 
 					"20001", 
 					"4.1"};
@@ -69,7 +69,8 @@ class Client implements Runnable {
 		setup(args);
 		startSending();
 		receiveInstructions();
-		System.out.println("Made it");
+		while(true){
+		}
 	}
 	
 	/*
@@ -100,14 +101,14 @@ class Client implements Runnable {
 			}
 		};
 		
-		timer.schedule(task, timeout);
+		timer.schedule(task, timeout, timeout);
 	}
 
 	/*
 	 * 
 	 */
 	protected void sendPackets() {
-		// TODO Auto-generated method stub
+		System.out.println("Packets sent");
 		
 		
 	}
