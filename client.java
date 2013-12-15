@@ -168,10 +168,6 @@ class Client implements Runnable {
 
 			/*
 			 * Read the message and react accordingly:
-			 * 		- route update message
-			 * 				update network, distance, neighbors
-			 * 					- possibly routeUpdate()
-			 * 				reset this node's timer
 			 */
 			private void respondToPacket(DatagramPacket packet) {
 				// recover hashtable
@@ -182,8 +178,10 @@ class Client implements Runnable {
 				if (isLinkdownMessage(table)){
 					linkdown(source);
 				}
-				// TODO: otherwise treat it like a route update 
-				updateNeighborDistances();
+				// otherwise treat it like a route update 
+				else {
+					readRouteUpdateMessage(source, table);
+				}
 			}
 
 			/*
@@ -203,10 +201,10 @@ class Client implements Runnable {
 	/*
 	 * Linkdown destroys an existing link between the client and a neighbor node:
 	 * 		if it's a neighbor
-	 * 			remove from neighbors and neighbor_timers
-	 * 			TODO: should i remove it from network?
+	 * 			remove from neighbors
+	 * 			remove from neighbor_timers
+	 * 			remove from neighbor_distances
 	 * 			update distances
-	 * 				- probably routeUpdate()
 	 */
 	private static void linkdown(Node node){
 		if (!neighbors.containsKey(node)){
@@ -222,11 +220,22 @@ class Client implements Runnable {
 	
 
 	/*
-	 * 
+	 * Responds to a route update message
+	 * 		update the neighbors table
+	 * 		update the neighbor_distances table
+	 * 		reset this node's timer
+	 * 		update distances
 	 */
-	private static void updateNeighborDistances() {
-		// TODO Auto-generated method stub
-		
+	private static void readRouteUpdateMessage(Node source, Hashtable<Node, Path> table) {
+		// update the neighbor_distances table
+		neighbor_distances.put(source, table);
+		// restart the timer
+		neighbor_timers.put(source, System.currentTimeMillis());
+		// update neighbors table
+		Node self = new Node(ip_address, port_number);
+		Path path = new Path(table.get(self).cost, source);
+		neighbors.put(source, path);
+		updateDistances();
 	}
 
 	/*
@@ -335,7 +344,7 @@ class Client implements Runnable {
 	 * Recover the sent object from a byte array.
 	 */
 	@SuppressWarnings("unchecked")
-	private static Hashtable recoverObject(byte[] bytes){
+	private static Hashtable<Node, Path> recoverObject(byte[] bytes){
 		ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
 		ObjectInput in = null;
 		Object obj = null;
@@ -466,6 +475,7 @@ class Client implements Runnable {
 	 * Check the format of command line arguments for correct form. If correct,
 	 * fill out the class variables appropriately.
 	 */
+	@SuppressWarnings("unused")
 	private static void setup(String[] args) throws UnknownHostException {
 		// check length
 		if (args.length < 5 || (args.length-2)%3 != 0){
