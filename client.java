@@ -211,6 +211,7 @@ class Client implements Runnable {
 			System.err.println("Error: attempted to linkdown non-neighbor node "
 					+ node.toString());
 		} else {
+			before_linkdown.put(node, neighbors.get(node));
 			neighbors.remove(node);
 			neighbor_timers.remove(node);
 			neighbor_distances.remove(node);
@@ -242,6 +243,14 @@ class Client implements Runnable {
 	 * Updates the distance table based on the current state of the network.
 	 */
 	private static void updateDistances() {
+		// make sure the network is up to date
+		for (Node neighbor : neighbor_distances.keySet()){
+			network.add(neighbor);
+			Hashtable<Node, Path> table = neighbor_distances.get(neighbor);
+			for (Node node : table.keySet()){
+				network.add(node);
+			}
+		}
 		boolean changed = false;
 		// for every node in the network
 		for (Node network_node : network){
@@ -293,7 +302,7 @@ class Client implements Runnable {
 			System.out.println("DEBUG - route update message sent");
 		}
 		// construct the byte array
-		byte[] bytes = tableToBytes();
+		byte[] bytes = tableToBytes(distance);
 		DatagramPacket packet = null;
 		// send it to each neighbor
 		for (Node neighbor : neighbors.keySet()){
@@ -309,15 +318,15 @@ class Client implements Runnable {
 	}
 	
 	/*
-	 * Convert the estimated_costs hashtable to a byte[] for transferral.
+	 * Convert the a hashtable to a byte[] for transferral.
 	 */
-	private static byte[] tableToBytes(){
+	private static byte[] tableToBytes(Hashtable<Node, Path> table){
 		ByteArrayOutputStream stream = new ByteArrayOutputStream();
 		ObjectOutput out = null;
 		byte[] bytes = null;
 		try {
 			out = new ObjectOutputStream(stream);
-			out.writeObject(distance);
+			out.writeObject(table);
 			bytes = stream.toByteArray();
 		} catch (IOException e) {
 			System.err.println("Error writing table to bytes");
@@ -379,16 +388,41 @@ class Client implements Runnable {
 	 * 			  entry's path cost is negative
 	 */
 	private static void linkdown(String destination){
-		//TODO: implement
+		// send the linkdown message to the neighbor
+		Node node = new Node(destination);
+		Path path = new Path(-1, destination);
+		Hashtable<Node, Path> linkdown_message = new Hashtable<Node, Path>();
+		linkdown_message.put(node, path);
+		byte[] bytes = tableToBytes(linkdown_message);
+		DatagramPacket packet = new DatagramPacket(bytes, bytes.length, node.address, node.port);
+		try {
+			socket.send(packet);
+		} catch (IOException e) {
+			System.err.println("Error delivering linkdown message.");
+			e.printStackTrace();
+			System.exit(1);
+		}
+		// destroy the connection locally
+		linkdown(node);
 	}
 	
 	/*
 	 * Allows the user to restore the link to the original value after linkdown()
 	 * destroyed it.
-	 * Both the current client and the specified neighbor restore the connection.
 	 */
 	private static void linkup(String destination){
-		//TODO: implement
+		Node neighbor = new Node(destination);
+		if (neighbors.containsKey(neighbor)){
+			System.err.println("ERROR - nodes are already neighbors.");
+		} else if (before_linkdown.containsKey(neighbor)){
+			// add it back to neighbors
+			neighbors.put(neighbor, before_linkdown.get(neighbor));
+			// start the timer
+			neighbor_timers.put(neighbor, System.currentTimeMillis());
+			// remove it from before_linkdown
+			before_linkdown.remove(neighbor);
+			// update distances
+		}
 	}
 	
 	/*
@@ -527,9 +561,11 @@ class Client implements Runnable {
 		
 	}
 
+	/*
+	 * Required to spawn threads. However, this version of run() is never called.
+	 */
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
 		if(debug){
 			System.out.println("This should never print.");			
 		}
