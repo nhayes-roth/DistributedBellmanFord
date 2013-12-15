@@ -166,32 +166,72 @@ class Client implements Runnable {
 
 			/*
 			 * Read the message and react accordingly:
-			 * 		- route update => change table and last_contact
+			 * 		- route update message
+			 * 				update network, distance, neighbors
+			 * 					- possibly routeUpdate()
+			 * 				reset this node's timer
 			 */
 			private void respondToPacket(DatagramPacket packet) {
-				Node link = new Node(packet.getAddress(), packet.getPort());
-				neighbor_timers.put(link, System.currentTimeMillis());
+				// recover hashtable
+				Node source = new Node(packet.getAddress(), packet.getPort());
 				byte[] data = packet.getData();
-				Hashtable<Node, Path> new_costs = recoverObject(data);
-				Set<Node> network = new HashSet<Node>();
-				network.addAll(distance.keySet());
-				network.addAll(new_costs.keySet());
-				for (Node node : network) {
-//					double cost = estimated_costs.get(node).cost;
-//					
-//					estimated_costs.put(key, value);
+				Hashtable<Node, Path> table = recoverObject(data);
+				// check if it's a linkdown message
+				if (isLinkdownMessage(table)){
+					linkdown(source);
 				}
+				// TODO: otherwise treat it like a route update 
+			}
+
+			/*
+			 * Determines if a delivered table is actually a linkdown message.
+			 */
+			private boolean isLinkdownMessage(Hashtable<Node, Path> table) {
+				for (Path path : table.values()){
+					if (path.cost < 0){
+						return true;
+					}
+				} return false;
 			}
 		};
 		thread.start();
 	}
 	
+	/*
+	 * Linkdown destroys an existing link between the client and a neighbor node:
+	 * 		if it's a neighbor
+	 * 			remove from neighbors and neighbor_timers
+	 * 			TODO: should i remove it from network?
+	 * 			update distances
+	 * 				- probably routeUpdate()
+	 */
+	private static void linkdown(Node node){
+		if (!neighbors.containsKey(node)){
+			System.err.println("Error: attempted to linkdown non-neighbor node "
+					+ node.toString());
+		} else {
+			neighbors.remove(node);
+			neighbor_timers.remove(node);
+			updateDistances();
+		}
+	}
 	
+
+	/*
+	 * Updates the distance table based on the current state of the network.
+	 */
+	private static void updateDistances() {
+		// TODO: implement
+		
+	}
 
 	/*
 	 * Send a copy of the current distance estimates to all of the client's neighbors.
 	 */
 	protected static void routeUpdate() {
+		if (debug){
+			System.out.println("DEBUG - route update message sent");
+		}
 		// construct the byte array
 		byte[] bytes = tableToBytes();
 		DatagramPacket packet = null;
@@ -275,6 +315,8 @@ class Client implements Runnable {
 	/*
 	 * Allows the user to destroy an existing link (i.e. change cost to infinity).
 	 * Both the current client and the specified neighbor break the connection.
+	 * 			- Linkdown messages contain a table with only 1 entry; that
+	 * 			  entry's path cost is negative
 	 */
 	private static void linkdown(String destination){
 		//TODO: implement
