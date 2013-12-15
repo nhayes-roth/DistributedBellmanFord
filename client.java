@@ -50,7 +50,7 @@ import java.util.Set;
 class Client implements Runnable {
 
 	/* Class Variables */
-	private static boolean debug = true;
+	private static boolean debug = false;
 	private static String ip_address;
 	private static int port_number;
 	private static DatagramSocket socket;
