@@ -58,6 +58,8 @@ class Client implements Runnable {
 	private static Set<Node> network = new HashSet<Node>();
 	private static Hashtable<Node, Path> neighbors = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Path> distance = new Hashtable<Node, Path>();
+	private static Hashtable<Node, Hashtable<Node,Path>> neighbor_distances = 
+			new Hashtable<Node,Hashtable<Node,Path>>();
 	private static Hashtable<Node, Path> before_linkdown = new Hashtable<Node, Path>();
 	private static Hashtable<Node, Long> neighbor_timers = new Hashtable<Node, Long>();
 
@@ -67,7 +69,7 @@ class Client implements Runnable {
 		if (args.length == 0 && debug == true){
 			args = new String[]{
 					"20000", 
-					"2", 
+					"4", 
 					"localhost", 
 					"20001", 
 					"4.1"};
@@ -181,6 +183,7 @@ class Client implements Runnable {
 					linkdown(source);
 				}
 				// TODO: otherwise treat it like a route update 
+				updateNeighborDistances();
 			}
 
 			/*
@@ -212,17 +215,65 @@ class Client implements Runnable {
 		} else {
 			neighbors.remove(node);
 			neighbor_timers.remove(node);
+			neighbor_distances.remove(node);
 			updateDistances();
 		}
 	}
 	
 
 	/*
+	 * 
+	 */
+	private static void updateNeighborDistances() {
+		// TODO Auto-generated method stub
+		
+	}
+
+	/*
 	 * Updates the distance table based on the current state of the network.
 	 */
 	private static void updateDistances() {
-		// TODO: implement
-		
+		boolean changed = false;
+		// for every node in the network
+		for (Node network_node : network){
+			// find the minimum distance that travels through a neighbor
+			double new_distance;
+			double old_distance;
+			if (distance.get(network_node) == null){
+				old_distance = -1;
+			} else {
+				old_distance = distance.get(network_node).cost;
+			}
+			for (Node neighbor_node : neighbors.keySet()){
+				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
+				double remaining_distance;
+				// if the nodes are the same, the distance is 0
+				if (network_node.equals(neighbor_node)){
+					remaining_distance = 0.;
+				}
+				// ignore neighbors that don't have paths to the node in question
+				else if (neighbor_distances
+							.get(neighbor_node)
+							.get(network_node) == null){
+					continue;
+				}
+				// otherwise calculate the estimated distance
+				else {
+					remaining_distance = neighbor_distances
+							.get(neighbor_node)
+							.get(network_node).cost;
+				}
+				new_distance = cost_to_neighbor + remaining_distance;
+				// check if this is the new shortest path
+				if (old_distance < 0 || new_distance < old_distance){
+					distance.put(network_node, new Path(new_distance, neighbor_node));
+					changed = true;
+				}
+			}
+		}
+		if (changed){
+			routeUpdate();
+		}
 	}
 
 	/*
