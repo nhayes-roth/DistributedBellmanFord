@@ -1,3 +1,4 @@
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.Hashtable;
@@ -34,39 +35,113 @@ import java.util.Hashtable;
  * until their distance vector changes or until TIMEOUT seconds pass, whichever 
  * arrives sooner, and then transmit their distance vectors to all neighbors.
  * 
- * 
+ * Link failures is also assumed when a client doesn’t receive a ROUTE UPDATE 
+ * message from a neighbor (i.e., hasn’t ‘heard’ from a neighbor) for 3*TIMEOUT 
+ * seconds. This happens when the neighbor client crashes or if the user calls the 
+ * CLOSE command for it. When this happens, the link cost should be set to infinity 
+ * and the client should stop sending ROUTE UPDATE messages to that neighbor. 
+ * The link is assumed to be dead until the process comes up and a ROUTE UPDATE 
+ * message is received again from that neighbor. 	
  */
 
-class Client {
+class Client implements Runnable {
 
 	/* Class Variables */
-	private static InetAddress ip_address;
-	private static int port_number;
-	private static double timeout;
-	private static Hashtable<String, Double> costs = new Hashtable<String, Double>();
+	private static String ip_address;				// TODO: maybe just store string?
+	private static int port_number;					// TODO: do i need this?
+	private static DatagramSocket read_socket;
+	private static DatagramSocket write_socket;
+	private static long timeout;
+	private static Hashtable<Node, Path> original_costs = new Hashtable<Node, Path>();
+	private static Hashtable<Node, Path> estimated_costs = new Hashtable<Node, Path>();
 
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
+		// TODO: remove this before submission
+		if (args.length == 0){
+			args = new String[]{
+					"20000", 
+					"5", 
+					"localhost", 
+					"20001", 
+					"4.1"};
+		}
 		setup(args);
-		printInfo();
+		startSending();
+		receiveInstructions();
+		System.out.println("Made it");
+	}
+	
+	/*
+	 * Manages the user interface: accepts commands, prints information, etc.
+	 */
+	private static void receiveInstructions() {
+		// TODO Auto-generated method stub
+		
 	}
 
 	/*
-	 * Prints the class information in a readable way.
+	 * Starts an independent thread to handle the regular sending of packets.
 	 */
-	private static void printInfo() {
-		StringBuilder sb = new StringBuilder();
-		sb.append("\n#### Local ####");
-		sb.append("\n" + ip_address.toString());
-		sb.append("\n" + port_number);
-		sb.append("\n" + timeout);
-		for (String key : costs.keySet()){
-			sb.append("\n#### Neighbor ####");
-			sb.append("\n" + key);
-			sb.append("\n" + costs.get(key));
-		}
-		sb.append("\n");
-		System.out.println(sb.toString());
+	private static void startSending() {
+		new Thread(new Client()).start();
+	}
+	
+	/*
+	 * Automatically runs when the new thread is started for sending packets.
+	 */
+	@Override
+	public void run() {
+		// setup the timer
+		java.util.Timer timer = new java.util.Timer();
+		java.util.TimerTask task = new java.util.TimerTask(){
+			public void run(){
+				sendPackets();
+			}
+		};
+		
+		timer.schedule(task, timeout);
+	}
+
+	/*
+	 * 
+	 */
+	protected void sendPackets() {
+		// TODO Auto-generated method stub
+		
+		
+	}
+
+	/*
+	 * Allows the user to destroy an existing link (i.e. change cost to infinity).
+	 * Both the current client and the specified neighbor break the connection.
+	 */
+	private static void linkdown(String remote_ip, String remote_port){
+		//TODO: implement
+	}
+	
+	/*
+	 * Allows the user to restore the link to the original value after linkdown()
+	 * destroyed it.
+	 * Both the current client and the specified neighbor restore the connection.
+	 */
+	private static void linkup(String remote_ip, String remote_port){
+		//TODO: implement
+	}
+	
+	/*
+	 * Allows the user to view the current routing table for the client
+	 * (i.e. it should indicate the cost and path used to reach that client).
+	 */
+	private static void showrt(){
+		//TODO: implement
+	}
+	
+	/*
+	 * Closes the client process.
+	 */
+	private static void close(){
+		//TODO: implement
 	}
 
 	/*
@@ -75,20 +150,22 @@ class Client {
 	 */
 	private static void setup(String[] args) throws UnknownHostException {
 		// check length
-		if (args.length < 5 || (args.length-2)%3 != 0)
+		if (args.length < 5 || (args.length-2)%3 != 0){
 			chastise("incorrect number of arguments");
+		}
 		// create local client
 		else {
 			try {
-				ip_address = InetAddress.getLocalHost();
+				// TODO: make sure this gives the literal IP and not the hostname/IP
+				ip_address = InetAddress.getLocalHost().toString();
 				port_number = Integer.parseInt(args[0]);
-				timeout = Double.parseDouble(args[1]);
+				timeout = Long.parseLong(args[1])*1000;
 			} catch (Exception e) {
 				chastise("improper local process arguments");
 				System.exit(1);
 			}
 		}
-		// create the costs table
+		// create both routing tables
 		for (int i=2; i<args.length; i=i+3){
 			// check formatting
 			try {
@@ -100,8 +177,11 @@ class Client {
 				System.exit(1);
 			}
 			// put into table
-			costs.put(args[i] + ":" + args[i+1], Double.parseDouble(args[i+2]));
+			Node destination = new Node(args[i] + ":" + args[i+1]);
+			Path cost = new Path(Double.parseDouble(args[i+2]), destination.toString());
+			original_costs.put(destination, cost);	
 		}
+		estimated_costs = original_costs;
 
 	}
 
@@ -118,8 +198,4 @@ class Client {
         System.exit(1);
 		
 	}
-
-	/*
-	 * 
-	 */
 }
