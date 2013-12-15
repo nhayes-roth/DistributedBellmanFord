@@ -1,3 +1,4 @@
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
@@ -12,11 +13,13 @@ import java.net.UnknownHostException;
  * A client's representation in a routing table.
  */
 
-public class Node {
+public class Node implements Serializable{
 
 	/* Class variables */
 	public InetAddress address;
 	public int port;
+	// auto-generated static final serialVersionUID field
+	private static final long serialVersionUID = -9113369215235909987L;
 	
 	/* Constructors */
 	public Node(InetAddress address, int port){

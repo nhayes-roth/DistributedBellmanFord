@@ -1,3 +1,4 @@
+import java.io.Serializable;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
@@ -12,11 +13,13 @@ import java.net.UnknownHostException;
  * Represents an entry in a routing table: cost and link.
  */
 
-public class Path {
+public class Path implements Serializable{
 	
 	/* Class Variables */
 	public double cost;
 	public Node link;
+	// auto-generated static final serialVersionUID field
+	private static final long serialVersionUID = -7878397739821850978L;
 	
 	/* Constructors */
 	Path(double cost, Node link){

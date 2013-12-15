@@ -1,6 +1,5 @@
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
+import java.io.*;
+import java.net.*;
 import java.util.Hashtable;
 
 /*
@@ -97,20 +96,87 @@ class Client implements Runnable {
 		java.util.Timer timer = new java.util.Timer();
 		java.util.TimerTask task = new java.util.TimerTask(){
 			public void run(){
-				sendPackets();
+				routeUpdate();
 			}
 		};
-		
 		timer.schedule(task, timeout, timeout);
 	}
 
 	/*
-	 * 
+	 * Send a copy of the current distance estimates to all of the client's neighbors.
 	 */
-	protected void sendPackets() {
-		System.out.println("Packets sent");
-		
-		
+	protected void routeUpdate() {
+		// construct the byte array
+		byte[] bytes = tableToBytes();
+		DatagramPacket packet = null;
+		// send it to each neighbor
+		for (Node neighbor : original_costs.keySet()){
+			packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
+		}
+	}
+	
+	/*
+	 * Convert the estimated_costs hashtable to a byte[] for transferral.
+	 */
+	private static byte[] tableToBytes(){
+		ByteArrayOutputStream stream = new ByteArrayOutputStream();
+		ObjectOutput out = null;
+		byte[] bytes = null;
+		try {
+			out = new ObjectOutputStream(stream);   
+			out.writeObject(estimated_costs);
+			bytes = stream.toByteArray();
+		} catch (IOException e) {
+			System.err.println("Error writing table to bytes");
+			e.printStackTrace();
+			System.exit(1);
+		} finally {
+			try {
+				if (out != null) {
+					out.close();
+				}
+			} catch (IOException ex) {
+				// ignore close exception
+			}
+			try {
+				stream.close();
+			} catch (IOException ex) {
+				// ignore close exception
+			}
+		}
+		return bytes;
+	}
+	
+	/*
+	 * Recover the sent object from a byte array.
+	 */
+	@SuppressWarnings("unchecked")
+	private Hashtable recoverObject(byte[] bytes){
+		ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
+		ObjectInput in = null;
+		Object obj = null;
+		try {
+			in = new ObjectInputStream(stream);
+			obj = in.readObject(); 
+		} catch (Exception e) {
+			System.err.println("Error writing bytes to object");
+			e.printStackTrace();
+			System.exit(1);
+		} finally {
+			try {
+				stream.close();
+			} catch (IOException ex) {
+				// ignore close exception
+			}
+			try {
+				if (in != null) {
+					in.close();
+				}
+			} catch (IOException ex) {
+				// ignore close exception
+			}
+		}
+		return (Hashtable<Node, Path>)obj;
 	}
 
 	/*
