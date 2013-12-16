@@ -38,11 +38,6 @@ class Client implements Runnable {
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
 		setup(args);
-		print(ip_address);
-		for (Node n : distance.keySet()){
-			print(n.toString());
-		}
-		print("SELF-ADDRESS: " + new Node(ip_address, port_number).toString());
 		startTimers();
 		startSending();
 		startListening();
@@ -167,7 +162,6 @@ class Client implements Runnable {
 	
 	/*
 	 * Linkdown destroys an existing link between the client and a neighbor node:
-	 * 		if it's a neighbor
 	 * 			from distance
 	 * 			remove from neighbors
 	 * 			remove from neighbor_timers
@@ -180,8 +174,9 @@ class Client implements Runnable {
 		distance.remove(node);
 		neighbors.remove(node);
 		neighbor_timers.remove(node);
-		neighbor_distances.remove(node);
-		updateDistances();
+		neighbor_distances.clear();
+		routeUpdate();
+		updateDistances(true);
 	}
 
 	/*
@@ -201,26 +196,29 @@ class Client implements Runnable {
 		neighbors.put(source, path);
 		updateDistances();
 	}
+	
+	/*
+	 * Wrapper function
+	 */
+	private static void updateDistances(){
+		updateDistances(false);
+	}
 
 	/*
 	 * Updates the distance table based on the current state of the network.
 	 */
-	private static void updateDistances() {
+	private static void updateDistances(boolean changed) {
 		// make sure the network is up to date
 		for (Node neighbor : neighbor_distances.keySet()){
 			network.add(neighbor);
 			Hashtable<Node, Path> table = neighbor_distances.get(neighbor);
 			for (Node node : table.keySet()){
-				// don't add yourself to the set
 				if (!node.equals(self_node)){
 					network.add(node);
 				}
 			}
 		}
-		boolean changed = false;
-		// for every node in the network
 		for (Node network_node : network){
-			// find the minimum distance that travels through a neighbor
 			double new_distance;
 			double old_distance;
 			if (distance.get(network_node) == null){
@@ -231,14 +229,21 @@ class Client implements Runnable {
 			for (Node neighbor_node : neighbors.keySet()){
 				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
 				double remaining_distance;
-				try {
+				
 				// if the nodes are the same, the distance is 0
 				if (network_node.equals(neighbor_node)){
 					remaining_distance = 0.;
 				}
+				else if(neighbor_distances == null) {
+					continue;
+				}
+				// ignore neighbors that don't have paths to the node in question
+				else if (neighbor_distances.get(neighbor_node) == null){
+					continue;
+				}
 				// ignore neighbors that don't have paths to the node in question
 				else if (neighbor_distances.get(neighbor_node)
-							.get(network_node) == null){
+						.get(network_node) == null){
 					continue;
 				}
 				// otherwise calculate the estimated distance
@@ -254,9 +259,6 @@ class Client implements Runnable {
 					distance.put(network_node, new_path);
 					print("Added to routing table: " + network_node.format() + new_path.format());
 					changed = true;
-				}
-				} catch (NullPointerException e) {
-					// ignore
 				}
 			}
 		}
@@ -281,7 +283,6 @@ class Client implements Runnable {
 			} catch (IOException e) {
 				System.err.println("Error delivering packet during routeUpdate");
 				e.printStackTrace();
-				System.exit(1);
 			}
 		}
 	}
@@ -453,13 +454,17 @@ class Client implements Runnable {
 					 * Checks the neighbor_timers table to see if anyone has
 					 * expired.
 					 */
-					private void checkNeighborTimers() {
+					synchronized private void checkNeighborTimers() {
 						long current_time = System.currentTimeMillis();
+						Set<Node> to_remove = new HashSet<Node>();
 						for (Node n : neighbor_timers.keySet()){
 							long elapsed = current_time - neighbor_timers.get(n);
 							if (elapsed >= 3*timeout){
-								removeNeighbor(n);
+								to_remove.add(n);
 							}
+						}
+						for (Node n : to_remove){
+							removeNeighbor(n);
 						}
 						
 					}
@@ -535,9 +540,9 @@ class Client implements Runnable {
 	 */
 	private static void chastise(String reason) {
 		System.err.println("\n##############################################");
-		System.err.println("ERROR:\tImproper command format, please try again.");
-		System.err.println("REASON:\t" + reason);
-        System.err.println("USAGE:\tjava Client [port] [timeout] " +
+		System.err.println("Error:\tImproper command format, please try again.");
+		System.err.println("Reason:\t" + reason);
+        System.err.println("Usage:\tjava Client [port] [timeout] " +
         				   "[remote_ip1] [remote_port1] [weight1] ...");
 		System.err.println("##############################################\n");
         System.exit(1);
