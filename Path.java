@@ -45,6 +45,10 @@ public class Path implements Serializable{
 	
 	/* toString() */
 	public String toString(){
+		return this.cost + ":" + this.link.toString();
+	}
+	
+	public String format(){
 		return String.format("Cost = %1f Link = (%2s)", this.cost, this.link.toString());
 	}
 	
