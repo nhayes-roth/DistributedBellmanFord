@@ -32,7 +32,7 @@ class Client implements Runnable {
 	private static ConcurrentHashMap<Node, Path> distance = new ConcurrentHashMap<Node, Path>();
 	private static ConcurrentHashMap<Node, ConcurrentHashMap<Node,Path>> neighbor_distances = 
 			new ConcurrentHashMap<Node,ConcurrentHashMap<Node,Path>>();
-	private static ConcurrentHashMap<Node, Path> before_linkdown = new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Path> old_neighbors = new ConcurrentHashMap<Node, Path>();
 	private static ConcurrentHashMap<Node, Long> neighbor_timers = new ConcurrentHashMap<Node, Long>();
 
 	/* Main Method */
@@ -170,7 +170,7 @@ class Client implements Runnable {
 	 */
 	private static void linkdown(Node node){
 		print("Linkdown removed " + node.toString());
-		before_linkdown.put(node, neighbors.get(node));
+		old_neighbors.put(node, neighbors.get(node));
 		distance.remove(node);
 		neighbors.remove(node);
 		neighbor_timers.remove(node);
@@ -186,10 +186,10 @@ class Client implements Runnable {
 	 * 		update distances
 	 */
 	private static void readRouteUpdateMessage(Node source, ConcurrentHashMap<Node, Path> table) {
-		print("######### MESSAGE from " + source.toString() + " ########");
-		for(Node node : table.keySet()){
-			print(node.format() + table.get(node).format());
-		}
+//		print("######### MESSAGE from " + source.toString() + " ########");
+//		for(Node node : table.keySet()){
+//			print(node.format() + table.get(node).format());
+//		}
 		// compare it to previous table, looking for removed nodes
 		if (neighbor_distances.get(source) != null){
 			Set<Node> missing_nodes = findMissing(table, neighbor_distances.get(source));
@@ -218,7 +218,7 @@ class Client implements Runnable {
 		for (Node had : previous.keySet()){
 			if (!received.keySet().contains(had)){
 				missing.add(had);
-				print("MISSING NODE: " + had.toString());
+//				print("MISSING NODE: " + had.toString());
 			}
 		}
 		return missing;
@@ -229,6 +229,7 @@ class Client implements Runnable {
 	 */
 	private static void removeMissing(Set<Node> missing){
 		for (Node n : missing){
+			print("Network node " + n.toString() + " has left the network.");
 			network.remove(n);
 			distance.remove(n);
 		}
@@ -434,13 +435,13 @@ class Client implements Runnable {
 			Node neighbor = new Node(destination);
 			if (neighbors.containsKey(neighbor)){
 				System.err.println("ERROR - nodes are already neighbors.");
-			} else if (before_linkdown.containsKey(neighbor)){
+			} else if (old_neighbors.containsKey(neighbor)){
 				// add it back to neighbors
-				neighbors.put(neighbor, before_linkdown.get(neighbor));
+				neighbors.put(neighbor, old_neighbors.get(neighbor));
 				// start the timer
 				neighbor_timers.put(neighbor, System.currentTimeMillis());
 				// remove it from before_linkdown
-				before_linkdown.remove(neighbor);
+				old_neighbors.remove(neighbor);
 				// update distances
 				updateDistances();
 			} else { 
@@ -522,44 +523,45 @@ class Client implements Runnable {
 	 * and calls routeUpdate.
 	 */
 	private static void removeNeighbor(Node n) {
-		print("Neighbor: " + n.toString() + " timed out and was removed.");
-		print("############# Network Before");
-		for (Node node : network){
-			print("Node: " + node.toString());
-		}
+		print("Neighbor " + n.toString() + " timed out.");
+//		print("############# Network Before");
+//		for (Node node : network){
+//			print("Node: " + node.toString());
+//		}
+		old_neighbors.put(n, neighbors.get(n));	// ***************
 		network.remove(n); 			// ***************
-		print("############# Network After");
-		for (Node node : network){
-			print("Node: " + node.toString());
-		}
-		print("############# Distance Before");
-		for (Node node : distance.keySet()){
-			print("Node: " + node.toString());
-		}
+//		print("############# Network After");
+//		for (Node node : network){
+//			print("Node: " + node.toString());
+//		}
+//		print("############# Distance Before");
+//		for (Node node : distance.keySet()){
+//			print("Node: " + node.toString());
+//		}
 		distance.remove(n); 		// ***************
-		print("############# Distance After");
-		for (Node node : distance.keySet()){
-			print("Node: " + node.toString());
-		}
-		print("############# Neighbors Before");
-		for (Node node : neighbors.keySet()){
-			print("Node: " + node.toString());
-		}
+//		print("############# Distance After");
+//		for (Node node : distance.keySet()){
+//			print("Node: " + node.toString());
+//		}
+//		print("############# Neighbors Before");
+//		for (Node node : neighbors.keySet()){
+//			print("Node: " + node.toString());
+//		}
 		neighbors.remove(n); 		// ***************
-		print("############# Neighbors After");
-		for (Node node : neighbors.keySet()){
-			print("Node: " + node.toString());
-		}
-		print("############# Timers Before");
-		for (Node node : neighbor_timers.keySet()){
-			print("Node: " + node.toString());
-		}
+//		print("############# Neighbors After");
+//		for (Node node : neighbors.keySet()){
+//			print("Node: " + node.toString());
+//		}
+//		print("############# Timers Before");
+//		for (Node node : neighbor_timers.keySet()){
+//			print("Node: " + node.toString());
+//		}
 		neighbor_timers.remove(n); 	// ***************
-		print("############# Timers After");
-		for (Node node : neighbor_timers.keySet()){
-			print("Node: " + node.toString());
-		}
-		routeUpdate();
+//		print("############# Timers After");
+//		for (Node node : neighbor_timers.keySet()){
+//			print("Node: " + node.toString());
+//		}
+		routeUpdate();				// ***************
 	}
 
 	/*
