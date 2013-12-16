@@ -213,7 +213,7 @@ class Client implements Runnable {
 			network.add(neighbor);
 			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
 			for (Node node : table.keySet()){
-				if (!node.equals(self_node)){
+				if (!node.equals(self_node) && !table.get(node).link.equals(self_node)){
 					network.add(node);
 				}
 			}
@@ -255,6 +255,8 @@ class Client implements Runnable {
 				new_distance = cost_to_neighbor + remaining_distance;
 				// check if this is the new shortest path
 				if (old_distance < 0 || new_distance < old_distance){
+					print("Network node: " + network_node);
+					print("Neighbor node: " + neighbor_node);
 					Path new_path = new Path(new_distance, neighbor_node);
 					distance.put(network_node, new_path);
 					print("Added to routing table: " + network_node.format() + new_path.format());
@@ -480,8 +482,17 @@ class Client implements Runnable {
 	 * and calls routeUpdate.
 	 */
 	private static void removeNeighbor(Node n) {
+		print("Node to Remove: " + n.toString());
 		print("Neighbor: " + n.toString() + " timed out and was removed.");
+		print("############# Network Before");
+		for (Node node : network){
+			print("Node: " + node.toString());
+		}
 		network.remove(n);
+		print("############# Network After");
+		for (Node node : network){
+			print("Node: " + node.toString());
+		}
 		distance.remove(n);
 		neighbors.remove(n);
 		neighbor_timers.remove(n);
