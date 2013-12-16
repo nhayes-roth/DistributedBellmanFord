@@ -175,7 +175,6 @@ class Client implements Runnable {
 		neighbors.remove(node);
 		neighbor_timers.remove(node);
 		neighbor_distances.clear();
-		routeUpdate();
 		updateDistances(true);
 	}
 
@@ -187,7 +186,19 @@ class Client implements Runnable {
 	 * 		update distances
 	 */
 	private static void readRouteUpdateMessage(Node source, ConcurrentHashMap<Node, Path> table) {
-		// update the neighbor_distances table
+		print("######### MESSAGE from " + source.toString() + " ########");
+		for(Node node : table.keySet()){
+			print(node.format() + table.get(node).format());
+		}
+		// compare it to previous table, looking for removed nodes
+		if (neighbor_distances.get(source) != null){
+			Set<Node> missing_nodes = findMissing(table, neighbor_distances.get(source));
+			// remove the missing nodes from the network and distance tables
+			if (!missing_nodes.isEmpty()){
+				removeMissing(missing_nodes);
+				// update the neighbor_distances table
+			}
+		}
 		neighbor_distances.put(source, table);
 		// restart the timer
 		neighbor_timers.put(source, System.currentTimeMillis());
@@ -197,6 +208,32 @@ class Client implements Runnable {
 		updateDistances();
 	}
 	
+	/*
+	 * Compares a received distance table to the currently held copy, returning
+	 * a set of Nodes to remove from the network.
+	 */
+	private static Set<Node> findMissing(ConcurrentHashMap<Node, Path> received,
+			ConcurrentHashMap<Node, Path> previous) {
+		Set<Node> missing = new HashSet<Node>();
+		for (Node had : previous.keySet()){
+			if (!received.keySet().contains(had)){
+				missing.add(had);
+				print("MISSING NODE: " + had.toString());
+			}
+		}
+		return missing;
+	}
+	
+	/*
+	 * Remove missing nodes from the network and distance tables
+	 */
+	private static void removeMissing(Set<Node> missing){
+		for (Node n : missing){
+			network.remove(n);
+			distance.remove(n);
+		}
+	}
+
 	/*
 	 * Wrapper function
 	 */
@@ -209,12 +246,15 @@ class Client implements Runnable {
 	 */
 	private static void updateDistances(boolean changed) {
 		// make sure the network is up to date
+//		print("NETWORK IN UPDATEDISTANCES()");
 		for (Node neighbor : neighbor_distances.keySet()){
+//			print("neighbor: " + neighbor.toString());
 			network.add(neighbor);
 			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
 			for (Node node : table.keySet()){
 				if (!node.equals(self_node) && !table.get(node).link.equals(self_node)){
 					network.add(node);
+//					print("found neighbor_distance: " + node.toString());
 				}
 			}
 		}
@@ -482,20 +522,43 @@ class Client implements Runnable {
 	 * and calls routeUpdate.
 	 */
 	private static void removeNeighbor(Node n) {
-		print("Node to Remove: " + n.toString());
 		print("Neighbor: " + n.toString() + " timed out and was removed.");
 		print("############# Network Before");
 		for (Node node : network){
 			print("Node: " + node.toString());
 		}
-		network.remove(n);
+		network.remove(n); 			// ***************
 		print("############# Network After");
 		for (Node node : network){
 			print("Node: " + node.toString());
 		}
-		distance.remove(n);
-		neighbors.remove(n);
-		neighbor_timers.remove(n);
+		print("############# Distance Before");
+		for (Node node : distance.keySet()){
+			print("Node: " + node.toString());
+		}
+		distance.remove(n); 		// ***************
+		print("############# Distance After");
+		for (Node node : distance.keySet()){
+			print("Node: " + node.toString());
+		}
+		print("############# Neighbors Before");
+		for (Node node : neighbors.keySet()){
+			print("Node: " + node.toString());
+		}
+		neighbors.remove(n); 		// ***************
+		print("############# Neighbors After");
+		for (Node node : neighbors.keySet()){
+			print("Node: " + node.toString());
+		}
+		print("############# Timers Before");
+		for (Node node : neighbor_timers.keySet()){
+			print("Node: " + node.toString());
+		}
+		neighbor_timers.remove(n); 	// ***************
+		print("############# Timers After");
+		for (Node node : neighbor_timers.keySet()){
+			print("Node: " + node.toString());
+		}
 		routeUpdate();
 	}
 
