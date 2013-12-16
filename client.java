@@ -42,9 +42,10 @@ import java.util.Set;
 class Client implements Runnable {
 
 	/* Class Variables */
-	private static boolean debug = false;
+	private static boolean debug = true;
 	private static String ip_address;
 	private static int port_number;
+	private static Node self_node;
 	private static DatagramSocket socket;
 	private static long timeout;
 	private static Set<Node> network = new HashSet<Node>();
@@ -57,16 +58,8 @@ class Client implements Runnable {
 
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
-		// TODO: remove this before submission
-		if (args.length == 0 && debug == true){
-			args = new String[]{
-					"20000", 
-					"4", 
-					"localhost", 
-					"20001", 
-					"4.1"};
-		}
 		setup(args);
+		print(new Node(ip_address, port_number).format());
 		startTimers();
 		startSending();
 		startListening();
@@ -123,9 +116,6 @@ class Client implements Runnable {
 				java.util.Timer timer = new java.util.Timer();
 				java.util.TimerTask task = new java.util.TimerTask(){
 					public void run(){
-						if(debug){
-							System.out.println("DEBUG - Sending thread fired.");	
-						}
 						routeUpdate();
 					}
 				};
@@ -166,8 +156,10 @@ class Client implements Runnable {
 				Node source = new Node(packet.getAddress(), packet.getPort());
 				byte[] data = packet.getData();
 				Hashtable<Node, Path> table = recoverObject(data);
+				print("received a message");
 				// check if it's a linkdown message
 				if (isLinkdownMessage(table)){
+					print("it was a linkdown message");
 					linkdown(source);
 				}
 				// otherwise treat it like a route update 
@@ -225,34 +217,22 @@ class Client implements Runnable {
 		// restart the timer
 		neighbor_timers.put(source, System.currentTimeMillis());
 		// update neighbors table
-		Node self = new Node(ip_address, port_number);
-		// TODO: remove these
-		System.out.println("+++++++++++++++");
-		System.out.println("Source: " + source.toString());
-		System.out.println("Self: " + self.toString());
-		System.out.println("+++++++++++++++");
-		System.out.println("Received Table");
+		print("+++++++readRouteUpdateMessage()++++++++");
+		print("Source: " + source.toString());
 		for (Node key : table.keySet()){
-			System.out.println(key.format() + table.get(key).toString());
-		}
-		System.out.println("+++++++++++++++");
-		System.out.println("Same as: self?");
-		for (Node key : table.keySet()){
-			System.out.println(key.equals(self));
-		}
-		System.out.println("+++++++++++++++");
-		System.out.println("Table.keySet().contains(self)?");
-		System.out.println(table.keySet().contains(self));
-		System.out.println("+++++++++++++++");
-		Path path = new Path(table.get(self).cost, source);
+			print(key.format() + table.get(key).toString());
+		}		
+		Path path = new Path(table.get(self_node).cost, source);
 		neighbors.put(source, path);
 		updateDistances();
+		print("+++++++++++++++");
 	}
 
 	/*
 	 * Updates the distance table based on the current state of the network.
 	 */
 	private static void updateDistances() {
+		print("updateDistances() called");
 		// make sure the network is up to date
 		for (Node neighbor : neighbor_distances.keySet()){
 			network.add(neighbor);
@@ -268,9 +248,11 @@ class Client implements Runnable {
 			double new_distance;
 			double old_distance;
 			if (distance.get(network_node) == null){
+				print("didn't have network_node: " + network_node.toString());
 				old_distance = -1;
 			} else {
 				old_distance = distance.get(network_node).cost;
+				print("had it and retrieved old_distance" + old_distance);
 			}
 			for (Node neighbor_node : neighbors.keySet()){
 				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
@@ -308,9 +290,7 @@ class Client implements Runnable {
 	 * Send a copy of the current distance estimates to all of the client's neighbors.
 	 */
 	protected static void routeUpdate() {
-		if (debug){
-			System.out.println("DEBUG - route update message sent");
-		}
+		print(" -------- routeUpdate()");
 		// construct the byte array
 		byte[] bytes = tableToBytes(distance);
 		DatagramPacket packet = null;
@@ -319,6 +299,7 @@ class Client implements Runnable {
 			packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
 			try {
 				socket.send(packet);
+				print(distance.size() + " entries sent to " + neighbor.toString());
 			} catch (IOException e) {
 				System.err.println("Error delivering packet during routeUpdate");
 				e.printStackTrace();
@@ -328,7 +309,7 @@ class Client implements Runnable {
 	}
 	
 	/*
-	 * Convert the a hashtable to a byte[] for transferral.
+	 * Convert a hashtable to a byte[] for transferral.
 	 */
 	private static byte[] tableToBytes(Hashtable<Node, Path> table){
 		ByteArrayOutputStream stream = new ByteArrayOutputStream();
@@ -534,6 +515,7 @@ class Client implements Runnable {
 				port_number = Integer.parseInt(args[0]);
 				socket = new DatagramSocket(Integer.parseInt(args[0]));
 				timeout = Long.parseLong(args[1])*1000;
+				self_node = new Node(ip_address, port_number);
 			} catch (Exception e) {
 				chastise("improper local process arguments");
 				System.exit(1);
@@ -571,6 +553,15 @@ class Client implements Runnable {
 		System.err.println("##############################################\n");
         System.exit(1);
 		
+	}
+	
+	/*
+	 * Pretty print debug statements.
+	 */
+	private static void print(String str){
+		if (debug){
+			System.out.println("DEBUG: " + str);
+		}
 	}
 
 	/*
