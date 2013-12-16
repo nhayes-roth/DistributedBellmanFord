@@ -229,7 +229,7 @@ class Client implements Runnable {
 	 */
 	private static void removeMissing(Set<Node> missing){
 		for (Node n : missing){
-			print("Network node " + n.toString() + " has left the network.");
+			print("Node " + n.toString() + " has left the network.");
 			network.remove(n);
 			distance.remove(n);
 		}
@@ -436,14 +436,19 @@ class Client implements Runnable {
 			if (neighbors.containsKey(neighbor)){
 				System.err.println("ERROR - nodes are already neighbors.");
 			} else if (old_neighbors.containsKey(neighbor)){
+				// add it back to network
+				network.add(neighbor);
+				// add it back to distance
+				distance.put(neighbor, old_neighbors.get(neighbor));
 				// add it back to neighbors
 				neighbors.put(neighbor, old_neighbors.get(neighbor));
 				// start the timer
 				neighbor_timers.put(neighbor, System.currentTimeMillis());
 				// remove it from before_linkdown
 				old_neighbors.remove(neighbor);
-				// update distances
+				routeUpdate();
 				updateDistances();
+				
 			} else { 
 				print("Error - " + destination + " was never a neighbor.");
 			}
