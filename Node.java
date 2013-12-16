@@ -1,6 +1,5 @@
 import java.io.Serializable;
 import java.net.InetAddress;
-import java.net.UnknownHostException;
 
 /*
  * File: Node.java
@@ -28,7 +27,7 @@ public class Node implements Serializable{
 	}
 	public Node(String address, int port){
 		try {
-			this.address = InetAddress.getByName(address);
+			this.address = Client.getIP(address);
 		} catch (Exception e) {
 			System.err.println("Error creating a Node");
 			e.printStackTrace();
@@ -39,9 +38,9 @@ public class Node implements Serializable{
 	public Node(String str){
 		try {
 			int index = str.indexOf(':');
-			this.address = InetAddress.getByName(str.substring(0, index));
+			this.address = Client.getIP(str.substring(0, index));
 			this.port = Integer.parseInt(str.substring(index+1));
-		} catch (UnknownHostException e) {
+		} catch (Exception e) {
 			System.err.println("Error creating a Node address from String");
 			e.printStackTrace();
 			System.exit(1);
