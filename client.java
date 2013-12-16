@@ -3,8 +3,8 @@ import java.net.*;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
-import java.util.Hashtable;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /*
  * File: Client.java
@@ -28,12 +28,12 @@ class Client implements Runnable {
 	private static DatagramSocket socket;
 	private static long timeout;
 	private static Set<Node> network = new HashSet<Node>();
-	private static Hashtable<Node, Path> neighbors = new Hashtable<Node, Path>();
-	private static Hashtable<Node, Path> distance = new Hashtable<Node, Path>();
-	private static Hashtable<Node, Hashtable<Node,Path>> neighbor_distances = 
-			new Hashtable<Node,Hashtable<Node,Path>>();
-	private static Hashtable<Node, Path> before_linkdown = new Hashtable<Node, Path>();
-	private static Hashtable<Node, Long> neighbor_timers = new Hashtable<Node, Long>();
+	private static ConcurrentHashMap<Node, Path> neighbors = new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Path> distance = new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, ConcurrentHashMap<Node,Path>> neighbor_distances = 
+			new ConcurrentHashMap<Node,ConcurrentHashMap<Node,Path>>();
+	private static ConcurrentHashMap<Node, Path> before_linkdown = new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Long> neighbor_timers = new ConcurrentHashMap<Node, Long>();
 
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
@@ -129,10 +129,10 @@ class Client implements Runnable {
 			 * Read the message and react accordingly:
 			 */
 			private void respondToPacket(DatagramPacket packet) {
-				// recover hashtable
+				// recover ConcurrentHashMap
 				Node source = new Node(packet.getAddress(), packet.getPort());
 				byte[] data = packet.getData();
-				Hashtable<Node, Path> table = recoverObject(data);
+				ConcurrentHashMap<Node, Path> table = recoverObject(data);
 				if (table == null){
 					return;
 				}
@@ -149,7 +149,7 @@ class Client implements Runnable {
 			/*
 			 * Determines if a delivered table is actually a linkdown message.
 			 */
-			private boolean isLinkdownMessage(Hashtable<Node, Path> table) {
+			private boolean isLinkdownMessage(ConcurrentHashMap<Node, Path> table) {
 				for (Path path : table.values()){
 					if (path.cost < 0){
 						return true;
@@ -186,7 +186,7 @@ class Client implements Runnable {
 	 * 		reset this node's timer
 	 * 		update distances
 	 */
-	private static void readRouteUpdateMessage(Node source, Hashtable<Node, Path> table) {
+	private static void readRouteUpdateMessage(Node source, ConcurrentHashMap<Node, Path> table) {
 		// update the neighbor_distances table
 		neighbor_distances.put(source, table);
 		// restart the timer
@@ -211,7 +211,7 @@ class Client implements Runnable {
 		// make sure the network is up to date
 		for (Node neighbor : neighbor_distances.keySet()){
 			network.add(neighbor);
-			Hashtable<Node, Path> table = neighbor_distances.get(neighbor);
+			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
 			for (Node node : table.keySet()){
 				if (!node.equals(self_node)){
 					network.add(node);
@@ -288,9 +288,9 @@ class Client implements Runnable {
 	}
 	
 	/*
-	 * Convert a hashtable to a byte[] for transferral.
+	 * Convert a ConcurrentHashMap to a byte[] for transferral.
 	 */
-	private static byte[] tableToBytes(Hashtable<Node, Path> table){
+	private static byte[] tableToBytes(ConcurrentHashMap<Node, Path> table){
 		ByteArrayOutputStream stream = new ByteArrayOutputStream();
 		ObjectOutput out = null;
 		byte[] bytes = null;
@@ -323,7 +323,7 @@ class Client implements Runnable {
 	 * Recover the sent object from a byte array.
 	 */
 	@SuppressWarnings("unchecked")
-	private static Hashtable<Node, Path> recoverObject(byte[] bytes){
+	private static ConcurrentHashMap<Node, Path> recoverObject(byte[] bytes){
 		ByteArrayInputStream stream = new ByteArrayInputStream(bytes);
 		ObjectInput in = null;
 		Object obj = null;
@@ -347,7 +347,7 @@ class Client implements Runnable {
 				// ignore close exception
 			}
 		}
-		return (Hashtable<Node, Path>)obj;
+		return (ConcurrentHashMap<Node, Path>)obj;
 	}
 
 	/*
@@ -365,7 +365,7 @@ class Client implements Runnable {
 			} else {
 				// send the linkdown message to the neighbor
 				Path path = new Path(-1, destination);
-				Hashtable<Node, Path> linkdown_message = new Hashtable<Node, Path>();
+				ConcurrentHashMap<Node, Path> linkdown_message = new ConcurrentHashMap<Node, Path>();
 				linkdown_message.put(neighbor, path);
 				byte[] bytes = tableToBytes(linkdown_message);
 				DatagramPacket packet = new DatagramPacket(bytes, bytes.length, 
