@@ -17,7 +17,7 @@ public class Node implements Serializable{
 
 	/* Class variables */
 	public InetAddress address;
-	public int port;
+	public Integer port;
 	// auto-generated static final serialVersionUID field
 	private static final long serialVersionUID = -9113369215235909987L;
 	
@@ -73,7 +73,18 @@ public class Node implements Serializable{
 	}
 	
 	/* Equality */
-	public boolean equals(Node other){
-		return (this.toString().equals(other.toString()));
+	@Override
+	public boolean equals(Object other){
+		Node that = (Node) other;
+		return (this.toString().equals(that.toString()));
+	}
+	
+	/* hashCode */
+	@Override
+	public int hashCode(){
+		int hash = 3;
+		hash = 7*3 + this.address.hashCode();
+		hash = 7*3 + this.port.hashCode();
+		return hash;
 	}
 }

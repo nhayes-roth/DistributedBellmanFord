@@ -227,14 +227,23 @@ class Client implements Runnable {
 		// update neighbors table
 		Node self = new Node(ip_address, port_number);
 		// TODO: remove these
+		System.out.println("+++++++++++++++");
 		System.out.println("Source: " + source.toString());
 		System.out.println("Self: " + self.toString());
-		System.out.println("Received Table --");
+		System.out.println("+++++++++++++++");
+		System.out.println("Received Table");
 		for (Node key : table.keySet()){
-			System.out.println("\t" + key.format() + table.get(key).toString());
+			System.out.println(key.format() + table.get(key).toString());
 		}
-		System.out.println("PLEASE:");
-		System.out.println(table.get(new Node(self.toString())));
+		System.out.println("+++++++++++++++");
+		System.out.println("Same as: self?");
+		for (Node key : table.keySet()){
+			System.out.println(key.equals(self));
+		}
+		System.out.println("+++++++++++++++");
+		System.out.println("Table.keySet().contains(self)?");
+		System.out.println(table.keySet().contains(self));
+		System.out.println("+++++++++++++++");
 		Path path = new Path(table.get(self).cost, source);
 		neighbors.put(source, path);
 		updateDistances();
