@@ -16,27 +16,6 @@ import java.util.Set;
  * ------------
  * Clients perform the distributed distance computation and support a user 
  * interface (edit links to neighbors and view the routing table.)
- * 
- * Clients are identified by an <IP address, Port> tuple.
- * 
- * Each client process gets as input the set of neighbors, the link costs and a 
- * timeout value. 
- * 
- * Each client has a read-only UDP socket to which it listens for incoming 
- * messages and the number of that port is known to its neighbors. 
- * 
- * Each client maintains a distance vector, a list of <destination, cost> tuples, 
- * one tuple per client, where cost is the current estimate of the total link 
- * cost on the shortest path to the other client. 
- * 
- * Clients exchange distance vector information using a ROUTE UPDATE message, 
- * i.e., each client uses this message to send a copy of its current distance 
- * vector to its neighbors. 
- * 
- * Each client uses a set of write only sockets to send these messages to its 
- * neighbors. The clients wait on their sockets 
- * until their distance vector changes or until TIMEOUT seconds pass, whichever 
- * arrives sooner, and then transmit their distance vectors to all neighbors.
  */
 
 class Client implements Runnable {
@@ -59,6 +38,10 @@ class Client implements Runnable {
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
 		setup(args);
+		print(ip_address);
+		for (Node n : distance.keySet()){
+			print(n.toString());
+		}
 		print("SELF-ADDRESS: " + new Node(ip_address, port_number).toString());
 		startTimers();
 		startSending();
@@ -134,7 +117,7 @@ class Client implements Runnable {
 		Thread thread = new Thread(new Client()){
 			public void run() {
 				while(true){
-					byte[] buffer = new byte[576];
+					byte[] buffer = new byte[4000];
 					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 					try {
 						socket.receive(packet);
@@ -155,6 +138,9 @@ class Client implements Runnable {
 				Node source = new Node(packet.getAddress(), packet.getPort());
 				byte[] data = packet.getData();
 				Hashtable<Node, Path> table = recoverObject(data);
+				if (table == null){
+					return;
+				}
 				// check if it's a linkdown message
 				if (isLinkdownMessage(table)){
 					linkdown(source);
@@ -245,13 +231,13 @@ class Client implements Runnable {
 			for (Node neighbor_node : neighbors.keySet()){
 				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
 				double remaining_distance;
+				try {
 				// if the nodes are the same, the distance is 0
 				if (network_node.equals(neighbor_node)){
 					remaining_distance = 0.;
 				}
 				// ignore neighbors that don't have paths to the node in question
-				else if (neighbor_distances
-							.get(neighbor_node)
+				else if (neighbor_distances.get(neighbor_node)
 							.get(network_node) == null){
 					continue;
 				}
@@ -268,6 +254,9 @@ class Client implements Runnable {
 					distance.put(network_node, new_path);
 					print("Added to routing table: " + network_node.format() + new_path.format());
 					changed = true;
+				}
+				} catch (NullPointerException e) {
+					// ignore
 				}
 			}
 		}
@@ -342,8 +331,7 @@ class Client implements Runnable {
 			obj = in.readObject(); 
 		} catch (Exception e) {
 			System.err.println("Error writing bytes to object");
-			e.printStackTrace();
-			System.exit(1);
+			System.err.println("Try again next time");
 		} finally {
 			try {
 				stream.close();
@@ -508,9 +496,9 @@ class Client implements Runnable {
 		// create local client
 		else {
 			try {
-				ip_address = "127.0.0.1";
-//				TODO: fix this
-//				ip_address = InetAddress.getLocalHost().getHostAddress();
+				// ip_address = "127.0.0.1";
+				// TODO: fix this
+				ip_address = getIP("localhost").getHostAddress();
 				port_number = Integer.parseInt(args[0]);
 				socket = new DatagramSocket(Integer.parseInt(args[0]));
 				timeout = Long.parseLong(args[1])*1000;
@@ -532,7 +520,9 @@ class Client implements Runnable {
 				System.exit(1);
 			}
 			// put into tables
-			Node destination = new Node(args[i] + ":" + args[i+1]);
+			InetAddress ip = getIP(args[i]);
+			Integer port = Integer.parseInt(args[i+1]);
+			Node destination = new Node(ip, port);
 			Path cost = new Path(Double.parseDouble(args[i+2]), destination.toString());
 			neighbors.put(destination, cost);
 			distance.put(destination, cost);
@@ -551,6 +541,16 @@ class Client implements Runnable {
         				   "[remote_ip1] [remote_port1] [weight1] ...");
 		System.err.println("##############################################\n");
         System.exit(1);
+	}
+
+	private static InetAddress getIP(String str){
+		InetAddress ip = null;
+		try {
+			ip = InetAddress.getByAddress(InetAddress.getByName(str).getAddress());
+		} catch (Exception e){
+			e.printStackTrace();
+			System.err.println("Error encountered in getIP()");
+		} return ip;
 	}
 	
 	/*
