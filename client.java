@@ -88,7 +88,7 @@ class Client implements Runnable {
 					}
 				}
 			}
-			if (command.contains("linkup")){
+			else if (command.contains("linkup")){
 				for (int i=0; i<command.length(); i++){
 					if (Character.isDigit(command.charAt(i))){
 						linkup(command.substring(i));
@@ -96,11 +96,13 @@ class Client implements Runnable {
 					}
 				}
 			}
-			if (command.contains("showrt")){
+			else if (command.contains("showrt")){
 				showrt();
 			}
-			if (command.contains("close")){
+			else if (command.contains("close")){
 				close();
+			} else {
+				print("Sorry, I couldn't understand that command.");
 			}
 		}
 		
@@ -136,7 +138,6 @@ class Client implements Runnable {
 					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 					try {
 						socket.receive(packet);
-						print("received packet");
 					} catch (IOException e) {
 						System.err.println("Error receiving a datagram packet.");
 						e.printStackTrace();
@@ -152,12 +153,10 @@ class Client implements Runnable {
 			private void respondToPacket(DatagramPacket packet) {
 				// recover hashtable
 				Node source = new Node(packet.getAddress(), packet.getPort());
-				print(source.toString());
 				byte[] data = packet.getData();
 				Hashtable<Node, Path> table = recoverObject(data);
 				// check if it's a linkdown message
 				if (isLinkdownMessage(table)){
-					print("isLinkdownMessage");
 					linkdown(source);
 				}
 				// otherwise treat it like a route update 
@@ -190,21 +189,14 @@ class Client implements Runnable {
 	 * 			update distances
 	 */
 	private static void linkdown(Node node){
-		print("\n+++++++linkDown()++++++++");
-		if (!neighbors.containsKey(node)){
-			System.err.println("Error: attempted to linkdown non-neighbor node "
-					+ node.toString());
-		} else {
-			print("removed " + node.toString());
-			before_linkdown.put(node, neighbors.get(node));
-			distance.remove(node);
-			neighbors.remove(node);
-			neighbor_timers.remove(node);
-			neighbor_distances.remove(node);
-			updateDistances();
-		}
+		print("Linkdown removed " + node.toString());
+		before_linkdown.put(node, neighbors.get(node));
+		distance.remove(node);
+		neighbors.remove(node);
+		neighbor_timers.remove(node);
+		neighbor_distances.remove(node);
+		updateDistances();
 	}
-	
 
 	/*
 	 * Responds to a route update message
@@ -274,7 +266,7 @@ class Client implements Runnable {
 				if (old_distance < 0 || new_distance < old_distance){
 					Path new_path = new Path(new_distance, neighbor_node);
 					distance.put(network_node, new_path);
-					print("Distance changed: " + network_node.format() + new_path.format());
+					print("Added to routing table: " + network_node.format() + new_path.format());
 					changed = true;
 				}
 			}
@@ -376,22 +368,30 @@ class Client implements Runnable {
 	 * 			  entry's path cost is negative
 	 */
 	private static void linkdown(String destination){
-		// send the linkdown message to the neighbor
-		Node node = new Node(destination);
-		Path path = new Path(-1, destination);
-		Hashtable<Node, Path> linkdown_message = new Hashtable<Node, Path>();
-		linkdown_message.put(node, path);
-		byte[] bytes = tableToBytes(linkdown_message);
-		DatagramPacket packet = new DatagramPacket(bytes, bytes.length, node.address, node.port);
-		try {
-			socket.send(packet);
-		} catch (IOException e) {
-			System.err.println("Error delivering linkdown message.");
-			e.printStackTrace();
-			System.exit(1);
+		try{
+			Node neighbor = new Node (destination);
+			if (!neighbors.containsKey(neighbor)){
+				System.err.println("Error: attempted to linkdown non-neighbor node "
+						+ neighbor.toString());
+			} else {
+				// send the linkdown message to the neighbor
+				Path path = new Path(-1, destination);
+				Hashtable<Node, Path> linkdown_message = new Hashtable<Node, Path>();
+				linkdown_message.put(neighbor, path);
+				byte[] bytes = tableToBytes(linkdown_message);
+				DatagramPacket packet = new DatagramPacket(bytes, bytes.length, 
+						neighbor.address, neighbor.port);
+				try {
+					socket.send(packet);
+				} catch (IOException e) {
+					System.err.println("Error delivering linkdown message.");
+				}
+				// destroy the connection locally
+				linkdown(neighbor);
+			}
+		} catch (Exception e) {
+			print("Error - check your arguments.");
 		}
-		// destroy the connection locally
-		linkdown(node);
 	}
 	
 	/*
@@ -399,20 +399,24 @@ class Client implements Runnable {
 	 * destroyed it.
 	 */
 	private static void linkup(String destination){
-		print("\n+++++++linkUp()++++++++");
-		Node neighbor = new Node(destination);
-		if (neighbors.containsKey(neighbor)){
-			System.err.println("ERROR - nodes are already neighbors.");
-		} else if (before_linkdown.containsKey(neighbor)){
-			print(neighbor.format() + before_linkdown.get(neighbor));
-			// add it back to neighbors
-			neighbors.put(neighbor, before_linkdown.get(neighbor));
-			// start the timer
-			neighbor_timers.put(neighbor, System.currentTimeMillis());
-			// remove it from before_linkdown
-			before_linkdown.remove(neighbor);
-			// update distances
-			updateDistances();
+		try{
+			Node neighbor = new Node(destination);
+			if (neighbors.containsKey(neighbor)){
+				System.err.println("ERROR - nodes are already neighbors.");
+			} else if (before_linkdown.containsKey(neighbor)){
+				// add it back to neighbors
+				neighbors.put(neighbor, before_linkdown.get(neighbor));
+				// start the timer
+				neighbor_timers.put(neighbor, System.currentTimeMillis());
+				// remove it from before_linkdown
+				before_linkdown.remove(neighbor);
+				// update distances
+				updateDistances();
+			} else { 
+				print("Error - " + destination + " was never a neighbor.");
+			}
+		} catch (Exception e) {
+			print("Error - " + destination + " was never a neighbor.");
 		}
 	}
 	
@@ -483,7 +487,7 @@ class Client implements Runnable {
 	 * and calls routeUpdate.
 	 */
 	private static void removeNeighbor(Node n) {
-		print("removed neighbor " + n.toString());
+		print("Neighbor: " + n.toString() + " timed out and was removed.");
 		network.remove(n);
 		distance.remove(n);
 		neighbors.remove(n);
@@ -547,7 +551,6 @@ class Client implements Runnable {
         				   "[remote_ip1] [remote_port1] [weight1] ...");
 		System.err.println("##############################################\n");
         System.exit(1);
-		
 	}
 	
 	/*
