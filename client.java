@@ -59,11 +59,10 @@ class Client implements Runnable {
 				System.exit(1);
 			}
 			if (command.contains("linkdown")){
-				for (int i=0; i<command.length(); i++){
-					if (Character.isDigit(command.charAt(i))){
-						linkdown(command.substring(i));
-						break;
-					}
+				if (command.length() <=16){
+					linkdown("localhost:" + command.substring(9));
+				} else {
+					linkdown(command.substring(9));					
 				}
 			}
 			else if (command.contains("linkup")){
@@ -444,12 +443,14 @@ class Client implements Runnable {
 	 */
 	private static void showrt(){
 		StringBuilder sb = new StringBuilder();
+		sb.append("\n---------------------------------\n");
 		sb.append(new SimpleDateFormat("hh:mm:ss").format(new Date()));
 		for (Node node : distance.keySet()){
 			sb.append("\n");
 			sb.append(node.format());
 			sb.append(distance.get(node).format());
 		}
+		sb.append("\n---------------------------------\n");
 		System.out.println(sb.toString());
 	}
 	
@@ -619,7 +620,7 @@ class Client implements Runnable {
         System.exit(1);
 	}
 
-	private static InetAddress getIP(String str){
+	public static InetAddress getIP(String str){
 		InetAddress ip = null;
 		try {
 			ip = InetAddress.getByAddress(InetAddress.getByName(str).getAddress());
