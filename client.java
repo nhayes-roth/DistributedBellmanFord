@@ -59,7 +59,7 @@ class Client implements Runnable {
 	/* Main Method */
 	public static void main(String[] args) throws Exception {
 		setup(args);
-		print(new Node(ip_address, port_number).format());
+		print("SELF-ADDRESS: " + new Node(ip_address, port_number).toString());
 		startTimers();
 		startSending();
 		startListening();
@@ -136,13 +136,11 @@ class Client implements Runnable {
 					DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
 					try {
 						socket.receive(packet);
+						print("received packet");
 					} catch (IOException e) {
 						System.err.println("Error receiving a datagram packet.");
 						e.printStackTrace();
 						System.exit(1);
-					}
-					if(debug){
-						System.out.println("DEBUG - packet received.");
 					}
 					respondToPacket(packet);
 				}
@@ -154,12 +152,12 @@ class Client implements Runnable {
 			private void respondToPacket(DatagramPacket packet) {
 				// recover hashtable
 				Node source = new Node(packet.getAddress(), packet.getPort());
+				print(source.toString());
 				byte[] data = packet.getData();
 				Hashtable<Node, Path> table = recoverObject(data);
-				print("received a message");
 				// check if it's a linkdown message
 				if (isLinkdownMessage(table)){
-					print("it was a linkdown message");
+					print("isLinkdownMessage");
 					linkdown(source);
 				}
 				// otherwise treat it like a route update 
@@ -185,17 +183,21 @@ class Client implements Runnable {
 	/*
 	 * Linkdown destroys an existing link between the client and a neighbor node:
 	 * 		if it's a neighbor
+	 * 			from distance
 	 * 			remove from neighbors
 	 * 			remove from neighbor_timers
 	 * 			remove from neighbor_distances
 	 * 			update distances
 	 */
 	private static void linkdown(Node node){
+		print("\n+++++++linkDown()++++++++");
 		if (!neighbors.containsKey(node)){
 			System.err.println("Error: attempted to linkdown non-neighbor node "
 					+ node.toString());
 		} else {
+			print("removed " + node.toString());
 			before_linkdown.put(node, neighbors.get(node));
+			distance.remove(node);
 			neighbors.remove(node);
 			neighbor_timers.remove(node);
 			neighbor_distances.remove(node);
@@ -217,28 +219,24 @@ class Client implements Runnable {
 		// restart the timer
 		neighbor_timers.put(source, System.currentTimeMillis());
 		// update neighbors table
-		print("+++++++readRouteUpdateMessage()++++++++");
-		print("Source: " + source.toString());
-		for (Node key : table.keySet()){
-			print(key.format() + table.get(key).toString());
-		}		
 		Path path = new Path(table.get(self_node).cost, source);
 		neighbors.put(source, path);
 		updateDistances();
-		print("+++++++++++++++");
 	}
 
 	/*
 	 * Updates the distance table based on the current state of the network.
 	 */
 	private static void updateDistances() {
-		print("updateDistances() called");
 		// make sure the network is up to date
 		for (Node neighbor : neighbor_distances.keySet()){
 			network.add(neighbor);
 			Hashtable<Node, Path> table = neighbor_distances.get(neighbor);
 			for (Node node : table.keySet()){
-				network.add(node);
+				// don't add yourself to the set
+				if (!node.equals(self_node)){
+					network.add(node);
+				}
 			}
 		}
 		boolean changed = false;
@@ -248,11 +246,9 @@ class Client implements Runnable {
 			double new_distance;
 			double old_distance;
 			if (distance.get(network_node) == null){
-				print("didn't have network_node: " + network_node.toString());
 				old_distance = -1;
 			} else {
 				old_distance = distance.get(network_node).cost;
-				print("had it and retrieved old_distance" + old_distance);
 			}
 			for (Node neighbor_node : neighbors.keySet()){
 				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
@@ -276,13 +272,16 @@ class Client implements Runnable {
 				new_distance = cost_to_neighbor + remaining_distance;
 				// check if this is the new shortest path
 				if (old_distance < 0 || new_distance < old_distance){
-					distance.put(network_node, new Path(new_distance, neighbor_node));
+					Path new_path = new Path(new_distance, neighbor_node);
+					distance.put(network_node, new_path);
+					print("Distance changed: " + network_node.format() + new_path.format());
 					changed = true;
 				}
 			}
 		}
 		if (changed){
 			routeUpdate();
+		} else {
 		}
 	}
 
@@ -290,7 +289,6 @@ class Client implements Runnable {
 	 * Send a copy of the current distance estimates to all of the client's neighbors.
 	 */
 	protected static void routeUpdate() {
-		print(" -------- routeUpdate()");
 		// construct the byte array
 		byte[] bytes = tableToBytes(distance);
 		DatagramPacket packet = null;
@@ -299,7 +297,6 @@ class Client implements Runnable {
 			packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
 			try {
 				socket.send(packet);
-				print(distance.size() + " entries sent to " + neighbor.toString());
 			} catch (IOException e) {
 				System.err.println("Error delivering packet during routeUpdate");
 				e.printStackTrace();
@@ -402,10 +399,12 @@ class Client implements Runnable {
 	 * destroyed it.
 	 */
 	private static void linkup(String destination){
+		print("\n+++++++linkUp()++++++++");
 		Node neighbor = new Node(destination);
 		if (neighbors.containsKey(neighbor)){
 			System.err.println("ERROR - nodes are already neighbors.");
 		} else if (before_linkdown.containsKey(neighbor)){
+			print(neighbor.format() + before_linkdown.get(neighbor));
 			// add it back to neighbors
 			neighbors.put(neighbor, before_linkdown.get(neighbor));
 			// start the timer
@@ -413,6 +412,7 @@ class Client implements Runnable {
 			// remove it from before_linkdown
 			before_linkdown.remove(neighbor);
 			// update distances
+			updateDistances();
 		}
 	}
 	
@@ -426,7 +426,7 @@ class Client implements Runnable {
 		for (Node node : distance.keySet()){
 			sb.append("\n");
 			sb.append(node.format());
-			sb.append(distance.get(node).toString());
+			sb.append(distance.get(node).format());
 		}
 		System.out.println(sb.toString());
 	}
@@ -454,9 +454,6 @@ class Client implements Runnable {
 				java.util.Timer timer = new java.util.Timer();
 				java.util.TimerTask task = new java.util.TimerTask(){
 					public void run(){
-						if(debug){
-							System.out.println("DEBUG - neighbor_timer thread fired.");	
-						}
 						checkNeighborTimers();
 					}
 
@@ -486,9 +483,7 @@ class Client implements Runnable {
 	 * and calls routeUpdate.
 	 */
 	private static void removeNeighbor(Node n) {
-		if (debug){
-			System.out.println("DEBUG - removed neighbor " + n.toString());
-		}
+		print("removed neighbor " + n.toString());
 		network.remove(n);
 		distance.remove(n);
 		neighbors.remove(n);
@@ -560,7 +555,7 @@ class Client implements Runnable {
 	 */
 	private static void print(String str){
 		if (debug){
-			System.out.println("DEBUG: " + str);
+			System.out.println(str);
 		}
 	}
 

@@ -49,7 +49,7 @@ public class Path implements Serializable{
 	}
 	
 	public String format(){
-		return String.format("Cost = %1f Link = (%2s)", this.cost, this.link.toString());
+		return String.format("Cost = %.2f, Link = (%s)", this.cost, this.link.toString());
 	}
 	
 	public static void main(String[] args){
