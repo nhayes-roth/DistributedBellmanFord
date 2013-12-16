@@ -26,10 +26,6 @@ public class Node implements Serializable{
 		this.address = address;
 		this.port = port;
 	}
-	public Node(InetAddress address, String port){
-		this.address = address;
-		this.port = Integer.parseInt(port);
-	}
 	public Node(String address, int port){
 		try {
 			this.address = InetAddress.getByName(address);
@@ -39,16 +35,6 @@ public class Node implements Serializable{
 			System.exit(1);
 		}
 		this.port = port;
-	}
-	public Node(String address, String port){
-		try {
-			this.address = InetAddress.getByName(address);
-		} catch (Exception e) {
-			System.err.println("Error creating a Node address from String");
-			e.printStackTrace();
-			System.exit(1);
-		}
-		this.port = Integer.parseInt(port);
 	}
 	public Node(String str){
 		try {

@@ -26,10 +26,6 @@ public class Path implements Serializable{
 		this.cost = cost;
 		this.link = link;
 	}
-	Path(String cost, Node link){
-		this.cost = Double.parseDouble(cost);
-		this.link = link;
-	}
 	Path(double cost, String link){
 		this.cost = cost;
 		this.link = new Node(link);
@@ -53,7 +49,6 @@ public class Path implements Serializable{
 	}
 	
 	public static void main(String[] args){
-		System.out.println((new Path ("4.1", "128.59.196.2:20000")));
 	}
 	
 }
