@@ -61,7 +61,7 @@ class Client implements Runnable {
 	 * fill out the class variables appropriately.
 	 */
 	@SuppressWarnings("unused")
-	private static void setup(String[] args) throws UnknownHostException {
+	synchronized private static void setup(String[] args) throws UnknownHostException {
 		// check length
 		if (args.length < 5 || (args.length-2)%3 != 0){
 			chastise("incorrect number of arguments");
@@ -121,8 +121,10 @@ class Client implements Runnable {
 	 */
 	private static void startTimers() {
 		long time = System.currentTimeMillis();
-		for (Node n : neighbors.keySet()){
-			neighbor_timers.put(n, time);
+		synchronized(Client.class){
+			for (Node n : neighbors.keySet()){
+				neighbor_timers.put(n, time);
+			}
 		}
 		Thread thread = new Thread(new Client()){
 			public void run() {
@@ -141,6 +143,7 @@ class Client implements Runnable {
 						long current_time = System.currentTimeMillis();
 						Set<Node> to_remove = new HashSet<Node>();
 						synchronized(neighbor_timers){
+							// TODO: this might lock it because it checks too frequently
 							for (Node n : neighbor_timers.keySet()){
 								long elapsed = current_time - neighbor_timers.get(n);
 								if (elapsed >= 3*timeout){
@@ -150,6 +153,8 @@ class Client implements Runnable {
 						}
 						for (Node n : to_remove){
 							removeNeighbor(n, "timeout detected on ");
+							// update distances
+							updateDistances();
 						}
 						
 					}
@@ -228,8 +233,10 @@ class Client implements Runnable {
 	 * Pretty print all of the client's (living) neighbors.
 	 */
 	private static void showNeighbors() {
-		for(Node neighbor : neighbors.keySet()){
-			print(neighbor.format() + neighbors.get(neighbor));
+		synchronized(neighbors){
+			for(Node neighbor : neighbors.keySet()){
+				print(neighbor.format() + neighbors.get(neighbor));
+			}
 		}
 	}
 	
@@ -237,9 +244,11 @@ class Client implements Runnable {
 	 * Pretty print all of the client currently tracked timers.
 	 */
 	private static void showTimers() {
-		for(Node neighbor : neighbor_timers.keySet()){
-			int elapsed = (int)(System.currentTimeMillis()-neighbor_timers.get(neighbor)/1000);
-			print(neighbor.toString() + " --- " + elapsed + "sec");
+		synchronized(neighbor_timers){
+			for(Node neighbor : neighbor_timers.keySet()){
+				int elapsed = (int)(System.currentTimeMillis()-neighbor_timers.get(neighbor)/1000);
+				print(neighbor.toString() + " --- " + elapsed + "sec");
+			}
 		}
 	}
 	
@@ -247,8 +256,10 @@ class Client implements Runnable {
 	 * Pretty print all of the client's departed neighbors.
 	 */
 	private static void showOldNeighbors() {
-		for(Node neighbor : old_neighbors.keySet()){
-			print(neighbor.format() + old_neighbors.get(neighbor));
+		synchronized(old_neighbors){
+			for(Node neighbor : old_neighbors.keySet()){
+				print(neighbor.format() + old_neighbors.get(neighbor));
+			}
 		}
 	}
 
@@ -257,8 +268,10 @@ class Client implements Runnable {
 	 */
 	private static void showNetwork() {
 		print(self_node.toString() + " (self)");
-		for(Node node : network.keySet()){
-			print(node.toString() + " (other)");
+		synchronized(network){
+			for(Node node : network.keySet()){
+				print(node.toString() + " (other)");
+			}
 		}
 	}
 
@@ -266,11 +279,13 @@ class Client implements Runnable {
 	 * Pretty print all of the currently held neighbor distance tables.
 	 */
 	private static void showNeighborsDistances() {
-		for (Node neighbor : neighbor_distances.keySet()){
-			print(neighbor.toString());
-			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
-			for (Node node : table.keySet()){
-				print("\t" + node.format() + table.get(node).format());
+		synchronized(neighbor_distances){
+			for (Node neighbor : neighbor_distances.keySet()){
+				print(neighbor.toString());
+				ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
+				for (Node node : table.keySet()){
+					print("\t" + node.format() + table.get(node).format());
+				}
 			}
 		}
 	}
@@ -279,7 +294,7 @@ class Client implements Runnable {
 	 * Allows the user to restore the link to the original value after linkdown()
 	 * or a timeout destroyed it.
 	 */
-	private static void linkup(String destination){
+	synchronized private static void linkup(String destination){
 		try{
 			Node neighbor = new Node(destination);
 			
@@ -308,16 +323,18 @@ class Client implements Runnable {
 	 * (i.e. it should indicate the cost and path used to reach that client).
 	 */
 	private static void showrt(){
-		StringBuilder sb = new StringBuilder();
-		sb.append("\n---------------------------------\n");
-		sb.append(new SimpleDateFormat("hh:mm:ss").format(new Date()));
-		for (Node node : distance.keySet()){
-			sb.append("\n");
-			sb.append(node.format());
-			sb.append(distance.get(node).format());
+		synchronized(distance){
+			StringBuilder sb = new StringBuilder();
+			sb.append("\n---------------------------------\n");
+			sb.append(new SimpleDateFormat("hh:mm:ss").format(new Date()));
+			for (Node node : distance.keySet()){
+				sb.append("\n");
+				sb.append(node.format());
+				sb.append(distance.get(node).format());
+			}
+			sb.append("\n---------------------------------\n");
+			print(sb.toString());
 		}
-		sb.append("\n---------------------------------\n");
-		print(sb.toString());
 	}
 
 	/*
@@ -328,26 +345,34 @@ class Client implements Runnable {
 	private static void linkdown(String destination){
 		try{
 			Node neighbor = new Node (destination);
-			if (!neighbors.containsKey(neighbor)){
-				print("Error - attempted to linkdown non-neighbor node "
-						+ neighbor.toString());
-			} else {
-				// create the linkdown message
-				Path path = new Path(-1, destination);	// negative cost indicates a linkdown
-				ConcurrentHashMap<Node, Path> linkdown_message = new ConcurrentHashMap<Node, Path>();
-				linkdown_message.put(neighbor, path);
-				byte[] bytes = tableToBytes(linkdown_message);
-				DatagramPacket packet = new DatagramPacket(bytes, bytes.length, 
-						neighbor.address, neighbor.port);
-				// send the message over the socket
-				try {
-					socket.send(packet);
-				} catch (IOException e) {
-					// ignore
+			synchronized (neighbors) {
+				try{
+					if (!neighbors.containsKey(neighbor)){
+						print("Error - attempted to linkdown non-neighbor node "
+								+ neighbor.toString());
+						return;
+					}
+				} catch (Exception e) {
+					print("Error - " + destination + " is not a node on this network.");
 				}
-				// destroy the connection locally
-				removeNeighbor(neighbor, "linkdown called on ");
 			}
+			// create the linkdown message
+			Path path = new Path(-1, destination);	// negative cost indicates a linkdown
+			ConcurrentHashMap<Node, Path> linkdown_message = new ConcurrentHashMap<Node, Path>();
+			linkdown_message.put(neighbor, path);
+			byte[] bytes = tableToBytes(linkdown_message);
+			DatagramPacket packet = new DatagramPacket(bytes, bytes.length, 
+					neighbor.address, neighbor.port);
+			// send the message over the socket
+			try {
+				socket.send(packet);
+			} catch (IOException e) {
+				// ignore
+			}
+			// destroy the connection locally
+			removeNeighbor(neighbor, "linkdown called on ");
+			// update distances
+			updateDistances();
 		} catch (Exception e) {
 			print("Error - " + destination + " is not a node on this network.");
 		}
@@ -382,12 +407,14 @@ class Client implements Runnable {
 		byte[] bytes = tableToBytes(distance);
 		DatagramPacket packet = null;
 		// send it to each neighbor
-		for (Node neighbor : neighbors.keySet()){
-			packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
-			try {
-				socket.send(packet);
-			} catch (IOException e) {
-				// ignore
+		synchronized(neighbors){
+			for (Node neighbor : neighbors.keySet()){
+				packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
+				try {
+					socket.send(packet);
+				} catch (IOException e) {
+					// ignore
+				}
 			}
 		}
 	}
@@ -396,32 +423,35 @@ class Client implements Runnable {
 	 * Convert a ConcurrentHashMap to a byte[] for transferral.
 	 */
 	private static byte[] tableToBytes(ConcurrentHashMap<Node, Path> table){
-		ByteArrayOutputStream stream = new ByteArrayOutputStream();
-		ObjectOutput out = null;
-		byte[] bytes = null;
-		try {
-			out = new ObjectOutputStream(stream);
-			out.writeObject(table);
-			bytes = stream.toByteArray();
-		} catch (IOException e) {
-			print("Error - failed to write table to bytes.");
-			e.printStackTrace();
-			System.exit(1);
-		} finally {
+		// TODO: don't think this is actually a necessary synch
+		synchronized (distance) {
+			ByteArrayOutputStream stream = new ByteArrayOutputStream();
+			ObjectOutput out = null;
+			byte[] bytes = null;
 			try {
-				if (out != null) {
-					out.close();
+				out = new ObjectOutputStream(stream);
+				out.writeObject(table);
+				bytes = stream.toByteArray();
+			} catch (IOException e) {
+				print("Error - failed to write table to bytes.");
+				e.printStackTrace();
+				System.exit(1);
+			} finally {
+				try {
+					if (out != null) {
+						out.close();
+					}
+				} catch (IOException ex) {
+					// ignore
 				}
-			} catch (IOException ex) {
-				// ignore
+				try {
+					stream.close();
+				} catch (IOException ex) {
+					// ignore close exception
+				}
 			}
-			try {
-				stream.close();
-			} catch (IOException ex) {
-				// ignore close exception
-			}
+			return bytes;
 		}
-		return bytes;
 	}
 	
     /*************** Reading Data ***************/
@@ -438,9 +468,7 @@ class Client implements Runnable {
 					try {
 						socket.receive(packet);
 					} catch (IOException e) {
-						print("Error - failed to receive packet.");
-						e.printStackTrace();
-						System.exit(1);
+						// ignore
 					}
 					read(packet);
 				}
@@ -462,6 +490,8 @@ class Client implements Runnable {
 		// check if it's a linkdown message
 		if (isLinkdownMessage(table)){
 			removeNeighbor(source, "linkdown message received from ");
+			// update distances
+			updateDistances();
 		}
 		// otherwise treat it like a route update 
 		else {
@@ -519,19 +549,22 @@ class Client implements Runnable {
 		
 		// if this is the first message, add the source neighbors
 		firstContact(source, table);
-		
-		// store the neighbor's distance table
-		neighbor_distances.put(source, table);
-		
-		// restart the timer
-		neighbor_timers.put(source, System.currentTimeMillis());
-		
-		// check the table for new nodes
-		for (Node node : table.keySet()){
-			
-			// add them to the network 
-			if (network.get(node) == null){
-				network.put(node, new Path(INF, source));
+		synchronized(neighbor_distances) {
+			// store the neighbor's distance table
+			neighbor_distances.put(source, table);
+		}
+		synchronized(neighbor_timers) {
+			// restart the timer
+			neighbor_timers.put(source, System.currentTimeMillis());
+		}
+		synchronized(network) {
+			// check the table for new nodes
+			for (Node node : table.keySet()){
+				
+				// add them to the network 
+				if (network.get(node) == null){
+					network.put(node, new Path(INF, source));
+				}
 			}
 		}
 		updateDistances();
@@ -540,7 +573,7 @@ class Client implements Runnable {
 	/*
 	 * Checks if this is the first message from a neighbor and responds accordingly.
 	 */
-	private static void firstContact(Node source, ConcurrentHashMap<Node, Path> table) {
+	synchronized private static void firstContact(Node source, ConcurrentHashMap<Node, Path> table) {
 		
 		// quit out if this is a known neighbor
 		if (neighbors.keySet().contains(source)){
@@ -585,9 +618,6 @@ class Client implements Runnable {
 			// update network cost to infinity
 			Path infinite_path = new Path(INF, neighbor);
 			network.put(neighbor, infinite_path);
-			
-			// update distances
-			updateDistances();
 		}
 	}
 
