@@ -18,22 +18,29 @@ import java.util.concurrent.ConcurrentHashMap;
  * interface (edit links to neighbors and view the routing table.)
  */
 
+//TODO: neighbor costs never change. so,what if two nodes are instantiated with different costs to one another?
 class Client implements Runnable {
 
     /*************** Class Variables ***************/
 	
+	private final static double INF = 999999;		// avoid overflow
 	private static String ip_address;
 	private static int port_number;
 	private static Node self_node;
 	private static DatagramSocket socket;
 	private static long timeout;
-	private static Set<Node> network = new HashSet<Node>();
-	private static ConcurrentHashMap<Node, Path> neighbors = new ConcurrentHashMap<Node, Path>();
-	private static ConcurrentHashMap<Node, Path> distance = new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Path> network = // don't actually use the Paths, just nice to be threadsafe
+			new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Path> neighbors = 
+			new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Path> distance = 
+			new ConcurrentHashMap<Node, Path>();
 	private static ConcurrentHashMap<Node, ConcurrentHashMap<Node,Path>> neighbor_distances = 
 			new ConcurrentHashMap<Node,ConcurrentHashMap<Node,Path>>();
-	private static ConcurrentHashMap<Node, Path> old_neighbors = new ConcurrentHashMap<Node, Path>();
-	private static ConcurrentHashMap<Node, Long> neighbor_timers = new ConcurrentHashMap<Node, Long>();
+	private static ConcurrentHashMap<Node, Path> old_neighbors = 
+			new ConcurrentHashMap<Node, Path>();
+	private static ConcurrentHashMap<Node, Long> neighbor_timers = 
+			new ConcurrentHashMap<Node, Long>();
 
     /*************** Main Method ***************/
 
@@ -67,7 +74,6 @@ class Client implements Runnable {
 				self_node = new Node(ip_address, port_number);
 			} catch (Exception e) {
 				chastise("improper local process arguments");
-				System.exit(1);
 			}
 		}
 		// create neighbors, distance, and network
@@ -77,9 +83,11 @@ class Client implements Runnable {
 				InetAddress remote_address = InetAddress.getByName(args[i]);
 				Integer remote_number = Integer.parseInt(args[i+1]);
 				double cost = Double.parseDouble(args[i+2]);
+				if (cost <= 0){
+					chastise("costs must be greater than 0");
+				}
 			} catch (Exception e) {
 				chastise("improper arguments for neighbor " + i);
-				System.exit(1);
 			}
 			// put into tables
 			InetAddress ip = getIP(args[i]);
@@ -88,7 +96,7 @@ class Client implements Runnable {
 			Path cost = new Path(Double.parseDouble(args[i+2]), destination.toString());
 			neighbors.put(destination, cost);
 			distance.put(destination, cost);
-			network.add(destination);
+			network.put(destination, cost);
 		}
 	}
 
@@ -96,12 +104,12 @@ class Client implements Runnable {
 	 * Write message to command line explaining why the user messed up.
 	 */
 	private static void chastise(String reason) {
-		System.err.println("\n##############################################");
-		System.err.println("Error:\tImproper command format, please try again.");
-		System.err.println("Reason:\t" + reason);
-        System.err.println("Usage:\tjava Client [port] [timeout] " +
+		print("\n##############################################");
+		print("Error:\tImproper command format, please try again.");
+		print("Reason:\t" + reason);
+		print("Usage:\tjava Client [port] [timeout] " +
         				   "[remote_ip1] [remote_port1] [weight1] ...");
-		System.err.println("##############################################\n");
+		print("##############################################\n");
         System.exit(1);
 	}
 	
@@ -137,7 +145,7 @@ class Client implements Runnable {
 							}
 						}
 						for (Node n : to_remove){
-							removeNeighbor(n, "timeout detected on ", false);
+							removeNeighbor(n, "timeout detected on ");
 						}
 						
 					}
@@ -180,23 +188,87 @@ class Client implements Runnable {
 			}
 			else if (command.contains("showrt")){
 				showrt();
-			}
-			else if (command.contains("close")){
+			} else if (command.contains("close")){
 				close();
+			} else if (command.contains("neighbor")){
+				showNeighbors();
+			} else if (command.contains("network")){
+				showNetwork();
+			} else if (command.contains("nd")){
+				showNeighborsDistances();
+			} else if (command.contains("timers")){
+				showTimers();
+			} else if (command.contains("old")){
+				showOldNeighbors();
 			} else {
 				print("Sorry, I couldn't understand that command.");
 			}
 		}
 	}
-	
-    /*************** Carry Out Instructions ***************/
+
+	/*************** Carry Out Instructions ***************/
 	
 	/*
 	 * Closes the client process.
 	 */
 	private static void close(){
-		socket.close();
-		System.exit(0);
+		try {
+			socket.close();
+			System.exit(0);
+		} catch (Exception e) {
+			// ignore and exit
+		}
+	}
+	
+	/*
+	 * Pretty print all of the client's (living) neighbors.
+	 */
+	private static void showNeighbors() {
+		for(Node neighbor : neighbors.keySet()){
+			print(neighbor.format() + neighbors.get(neighbor));
+		}
+	}
+	
+	/*
+	 * Pretty print all of the client currently tracked timers.
+	 */
+	private static void showTimers() {
+		for(Node neighbor : neighbor_timers.keySet()){
+			int elapsed = (int)(System.currentTimeMillis()-neighbor_timers.get(neighbor)/1000);
+			print(neighbor.toString() + " --- " + elapsed + "sec");
+		}
+	}
+	
+	/*
+	 * Pretty print all of the client's departed neighbors.
+	 */
+	private static void showOldNeighbors() {
+		for(Node neighbor : old_neighbors.keySet()){
+			print(neighbor.format() + old_neighbors.get(neighbor));
+		}
+	}
+
+	/*
+	 * Pretty print all of the nodes the client is aware of.
+	 */
+	private static void showNetwork() {
+		print(self_node.toString() + " (self)");
+		for(Node node : network.keySet()){
+			print(node.toString() + " (other)");
+		}
+	}
+
+	/*
+	 * Pretty print all of the currently held neighbor distance tables.
+	 */
+	private static void showNeighborsDistances() {
+		for (Node neighbor : neighbor_distances.keySet()){
+			print(neighbor.toString());
+			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
+			for (Node node : table.keySet()){
+				print("\t" + node.format() + table.get(node).format());
+			}
+		}
 	}
 	
 	/*
@@ -206,28 +278,24 @@ class Client implements Runnable {
 	private static void linkup(String destination){
 		try{
 			Node neighbor = new Node(destination);
+			
 			if (neighbors.containsKey(neighbor)){
-				System.err.println("Error - nodes are already neighbors.");
+				print("Error - nodes are already neighbors.");
+				
 			} else if (old_neighbors.containsKey(neighbor)){
-				print("Linkup restored " + neighbor.format() + old_neighbors.get(neighbor).format());
-				// add it back to network
-				network.add(neighbor);
-				// add it back to distance
-				distance.put(neighbor, old_neighbors.get(neighbor));
-				// add it back to neighbors
-				neighbors.put(neighbor, old_neighbors.get(neighbor));
-				// start the timer
-				neighbor_timers.put(neighbor, System.currentTimeMillis());
-				// remove it from old_neighbors
+				
+				Path old_path = old_neighbors.get(neighbor);	
 				old_neighbors.remove(neighbor);
-				routeUpdate();
-				// TODO: maybe remove here?
-				updateDistances();
+				neighbors.put(neighbor, old_path);
+				network.put(neighbor, old_path);
+				neighbor_timers.put(neighbor, System.currentTimeMillis());
+				
 			} else { 
 				print("Error - " + destination + " was never a neighbor.");
 			}
 		} catch (Exception e) {
-			print("Error - " + destination + " was never a neighbor.");
+			print("Error - exception encountered while attempting to link up.");
+			e.printStackTrace();
 		}
 	}
 	
@@ -245,40 +313,39 @@ class Client implements Runnable {
 			sb.append(distance.get(node).format());
 		}
 		sb.append("\n---------------------------------\n");
-		System.out.println(sb.toString());
+		print(sb.toString());
 	}
 
 	/*
 	 * Allows the user to destroy an existing link (i.e. change cost to infinity).
 	 * Both the current client and the specified neighbor break the connection.
-	 * 			- Linkdown messages contain a table with only 1 entry; that
-	 * 			  entry's path cost is negative
+	 * 		- Linkdown messages contain a table with negative costs
 	 */
 	private static void linkdown(String destination){
 		try{
 			Node neighbor = new Node (destination);
 			if (!neighbors.containsKey(neighbor)){
-				System.err.println("Error - attempted to linkdown non-neighbor node "
+				print("Error - attempted to linkdown non-neighbor node "
 						+ neighbor.toString());
 			} else {
-				Boolean last_neighbor = (neighbors.size()==1);
-				// send the linkdown message to the neighbor
-				Path path = new Path(-1, destination);
+				// create the linkdown message
+				Path path = new Path(-1, destination);	// negative cost indicates a linkdown
 				ConcurrentHashMap<Node, Path> linkdown_message = new ConcurrentHashMap<Node, Path>();
 				linkdown_message.put(neighbor, path);
 				byte[] bytes = tableToBytes(linkdown_message);
 				DatagramPacket packet = new DatagramPacket(bytes, bytes.length, 
 						neighbor.address, neighbor.port);
+				// send the message over the socket
 				try {
 					socket.send(packet);
 				} catch (IOException e) {
-					System.err.println("Error - delivering linkdown message.");
+					print("Error - failed to deliver linkdown message.");
 				}
 				// destroy the connection locally
-				removeNeighbor(neighbor, "linkdown called on ", last_neighbor);
+				removeNeighbor(neighbor, "linkdown called on ");
 			}
 		} catch (Exception e) {
-			print("Error - check your arguments.");
+			print("Error - " + destination + " is not a node on this network.");
 		}
 	}
 	
@@ -316,7 +383,7 @@ class Client implements Runnable {
 			try {
 				socket.send(packet);
 			} catch (IOException e) {
-				System.err.println("Error delivering packet during routeUpdate");
+				print("Error - routeUpdate encountered an IOException.");
 				e.printStackTrace();
 			}
 		}
@@ -334,7 +401,7 @@ class Client implements Runnable {
 			out.writeObject(table);
 			bytes = stream.toByteArray();
 		} catch (IOException e) {
-			System.err.println("Error writing table to bytes");
+			print("Error - failed to write table to bytes.");
 			e.printStackTrace();
 			System.exit(1);
 		} finally {
@@ -343,7 +410,7 @@ class Client implements Runnable {
 					out.close();
 				}
 			} catch (IOException ex) {
-				// ignore close exception
+				// ignore
 			}
 			try {
 				stream.close();
@@ -368,50 +435,37 @@ class Client implements Runnable {
 					try {
 						socket.receive(packet);
 					} catch (IOException e) {
-						System.err.println("Error receiving a datagram packet.");
+						print("Error - failed to receive packet.");
 						e.printStackTrace();
 						System.exit(1);
 					}
-					respondToPacket(packet);
+					read(packet);
 				}
-			}
-
-			/*
-			 * Read the message and react accordingly:
-			 */
-			private void respondToPacket(DatagramPacket packet) {
-				// recover ConcurrentHashMap
-				Node source = new Node(packet.getAddress(), packet.getPort());
-				byte[] data = packet.getData();
-				ConcurrentHashMap<Node, Path> table = recoverObject(data);
-				if (table == null){
-					return;
-				}
-				// check if it's a linkdown message
-				if (isLinkdownMessage(table)){
-					Boolean is_last = (neighbors.size() == 1);
-					removeNeighbor(source, "linkdown received from " + source.toString(), is_last);
-				}
-				// otherwise treat it like a route update 
-				else {
-					readRouteUpdateMessage(source, table);
-				}
-			}
-
-			/*
-			 * Determines if a delivered table is actually a linkdown message.
-			 */
-			private boolean isLinkdownMessage(ConcurrentHashMap<Node, Path> table) {
-				for (Path path : table.values()){
-					if (path.cost < 0){
-						return true;
-					}
-				} return false;
 			}
 		};
 		thread.start();
 	}
 	
+	/*
+	 * Read the message and react accordingly:
+	 */
+	private static void read(DatagramPacket packet) {
+		
+		// recover distances
+		Node source = new Node(packet.getAddress(), packet.getPort());
+		byte[] data = packet.getData();
+		ConcurrentHashMap<Node, Path> table = recoverObject(data);
+		
+		// check if it's a linkdown message
+		if (isLinkdownMessage(table)){
+			removeNeighbor(source, "linkdown message received from ");
+		}
+		// otherwise treat it like a route update 
+		else {
+			readRouteUpdateMessage(source, table);
+		}
+	}
+
 	/*
 	 * Recover the sent object from a byte array.
 	 */
@@ -442,168 +496,228 @@ class Client implements Runnable {
 		}
 		return (ConcurrentHashMap<Node, Path>)obj;
 	}
+	
+	/*
+	 * Determines if a delivered table is actually a linkdown message by checking
+	 * for negative costs.
+	 */
+	private static boolean isLinkdownMessage(ConcurrentHashMap<Node, Path> table) {
+		for (Path path : table.values()){
+			if (path.cost < 0){
+				return true;
+			}
+		} return false;
+	}
 
 	/*
 	 * Reads a route update message and reacts accordingly.
 	 */
 	private static void readRouteUpdateMessage(Node source, ConcurrentHashMap<Node, Path> table) {
-		// compare the received table to the previous one, looking for lost nodes
-		if (neighbor_distances.get(source) != null){
-			Set<Node> missing_nodes = findMissing(table, neighbor_distances.get(source));
-			// remove the missing nodes from the network and distance tables
-			if (!missing_nodes.isEmpty()){
-				removeMissing(source, missing_nodes);
-			}
-		}
-		// put the rest in the table
+		
+		// if this is the first message, add the source neighbors
+		firstContact(source, table);
+		
+		// store the neighbor's distance table
 		neighbor_distances.put(source, table);
+		
 		// restart the timer
 		neighbor_timers.put(source, System.currentTimeMillis());
-		// update neighbors table
-		Path path = new Path(table.get(self_node).cost, source);
-		neighbors.put(source, path);
+		
+		// check the table for new nodes
+		for (Node node : table.keySet()){
+			
+			// add them to the network 
+			if (network.get(node) == null){
+				network.put(node, new Path(INF, source));
+			}
+		}
 		updateDistances();
 	}
-
-	/*
-	 * Compares a received distance table to the currently held copy, returning
-	 * a set of Nodes to remove from the network.
-	 */
-	private static Set<Node> findMissing(ConcurrentHashMap<Node, Path> received,
-			ConcurrentHashMap<Node, Path> previous) {
-		Set<Node> missing = new HashSet<Node>();
-		for (Node had : previous.keySet()){
-			if (!received.keySet().contains(had)){
-				missing.add(had);
-			}
-		}
-		return missing;
-	}
 	
 	/*
-	 * Remove missing nodes from the network and distance tables
+	 * Checks if this is the first message from a neighbor and responds accordingly.
 	 */
-	private static void removeMissing(Node source, Set<Node> missing){
-		for (Node n : missing){			
-			network.remove(n);
-			distance.remove(n);
-			if (neighbors.keySet().contains(n)){
-				old_neighbors.put(n, neighbors.get(n));
-			}
-			neighbors.remove(n);
-			neighbor_distances.remove(n);
-			neighbor_timers.remove(n);
+	private static void firstContact(Node source, ConcurrentHashMap<Node, Path> table) {
+		
+		// quit out if this is a known neighbor
+		if (neighbors.keySet().contains(source)){
+			return;
+		} 
+		else {
+			Double cost = INF;
 			
-			Set<Node> to_remove = new HashSet<Node>();
-			for (Node node : distance.keySet()){
-				if (distance.get(node).link.equals(n)){
-					to_remove.add(node);
-				}
+			// recover old cost if there's a matching old_neighbor
+			if (old_neighbors.keySet().contains(source)) {
+				cost = old_neighbors.get(source).cost;
 			}
-			for (Node node : to_remove){
-				print("Removed missing entry from local memory -- " + node.format() + distance.get(node).format());
-				distance.remove(node);
+			// otherwise assume the cost provided in the table is accurate
+			else {
+				cost = table.get(self_node).cost;
 			}
+			
+			// add to neighbors and network
+			neighbors.put(source, new Path(cost, source));
+			network.put(source, new Path(cost, source));
 		}
 	}
-	
-    /*************** Class Variables ***************/
-	
-	/*
-	 * Removes a neighbor from this client's network, distance, and neighbors
-	 * and calls routeUpdate.
-	 */
-	private static void removeNeighbor(Node n, String message, Boolean last_neighbor) {
-		print(message + n.toString());
-		old_neighbors.put(n, neighbors.get(n));
-		network.remove(n);
-		distance.remove(n);
-		Set<Node> to_remove = new HashSet<Node>();
-		for (Node node : distance.keySet()){
-			if (distance.get(node).link.equals(n)){
-				to_remove.add(node);
-			}
-		}
-		for (Node node : to_remove){
-			distance.remove(node);
-		}
-		neighbors.remove(n);
-		neighbor_distances.remove(n);
-		neighbor_timers.remove(n);
-		if (!last_neighbor){
-			routeUpdate();
-		}
-	}
+
+    /*************** Editing Tables ***************/
 	
 	/*
-	 * Wrapper function
+	 * Removes a neighbor from this client's list of active neighbors:
 	 */
-	private static void updateDistances(){
-		updateDistances(false);
+	private static void removeNeighbor(Node neighbor, String message) {
+		print(message + neighbor.toString());
+		if (neighbors.keySet().contains(neighbor)){
+			
+			// remove from neighbors and store in old_neighbors
+			Path prev_path = neighbors.get(neighbor);
+			neighbors.remove(neighbor);
+			old_neighbors.put(neighbor, prev_path);
+			
+			// remove from timer and distance tables
+			neighbor_distances.remove(neighbor);
+			neighbor_timers.remove(neighbor);
+			
+			// update network cost to infinity
+			Path infinite_path = new Path(INF, neighbor);
+			network.put(neighbor, infinite_path);
+			
+			// update distances
+			updateDistances();
+		}
 	}
 
 	/*
 	 * Updates the distance table based on the current state of the network.
 	 */
-	private static void updateDistances(boolean changed) {
-		for (Node neighbor : neighbor_distances.keySet()){
-			network.add(neighbor);
-			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
-			for (Node node : table.keySet()){
-				if (!node.equals(self_node) && !table.get(node).link.equals(self_node)){
-					network.add(node);
-				}
+	private static void updateDistances() {
+		
+		boolean any_changed = false;
+		
+		// for each node in the network
+		for (Node network_node : network.keySet()){
+			
+			// values to compare against
+			Path previous_path = distance.get(network_node);
+			Double previous_distance = null;
+			Node previous_link = null;
+			try {
+				previous_distance = previous_path.cost;
+				previous_link = previous_path.link;
+			} catch (NullPointerException e) {
+				previous_distance = INF;
 			}
-		}
-		for (Node network_node : network){
-			double new_distance;
-			double old_distance;
-			if (distance.get(network_node) == null){
-				old_distance = -1;
-			} else {
-				old_distance = distance.get(network_node).cost;
-			}
+			
+			boolean this_changed = false;
+			
+			// try to find a better estimate
 			for (Node neighbor_node : neighbors.keySet()){
-				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
-				double remaining_distance;
 				
-				// if the nodes are the same, the distance is 0
-				if (network_node.equals(neighbor_node)){
-					remaining_distance = 0.;
-				}
-				// avoid possible null pointer exceptions
-				else if(neighbor_distances == null) {
-					continue;
-				}
-				// avoid possible null pointer exceptions
-				else if (neighbor_distances.get(neighbor_node) == null){
-					continue;
-				}
-				// ignore neighbors that don't have paths to the node in question
-				else if (neighbor_distances.get(neighbor_node)
-						.get(network_node) == null){
-					continue;
-				}
-				// otherwise calculate the estimated distance
-				else {
-					remaining_distance = neighbor_distances
+				double distance_from_neighbor_to_target;
+				
+				double cost_to_neighbor = neighbors.get(neighbor_node).cost; 
+				try {
+					distance_from_neighbor_to_target = neighbor_distances
 							.get(neighbor_node)
 							.get(network_node).cost;
+				} catch (NullPointerException e) {
+					distance_from_neighbor_to_target = INF;
 				}
-				new_distance = cost_to_neighbor + remaining_distance;
-				// check if this is the new shortest path
-				if (old_distance < 0 || new_distance < old_distance){
-					Path new_path = new Path(new_distance, neighbor_node);
-					distance.put(network_node, new_path);
-					print("New shortest path: " + network_node.format() + new_path.format());
-					changed = true;
+				
+				double estimate = cost_to_neighbor + distance_from_neighbor_to_target;
+				
+				// TODO: might have to detect if path changes
+				// if the estimate is lower, or this is new, make a note
+				if (estimate < previous_distance){
+					previous_distance = estimate;
+					previous_link = neighbor_node;
+					this_changed = true;
+					any_changed = true;
 				}
 			}
+			// if necessary, change the entry in the distance table
+			if (this_changed){
+				distance.put(network_node, new Path (previous_distance, previous_link));
+			}
 		}
-		if (changed){
+		// if any distance entry changed, send the table to all neighbors
+		if (any_changed){
 			routeUpdate();
 		}
 	}
+		
+		
+		
+		
+		
+		
+		
+//	}
+//		for (Node neighbor : neighbor_distances.keySet()){
+//			
+//			network_costs.add(neighbor);
+//			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
+//			for (Node node : table.keySet()){
+//				if (!node.equals(self_node) && !table.get(node).link.equals(self_node)){
+//					network_costs.add(node);
+//				}
+//			}
+//		}
+//		for (Node network_node : network_costs){
+//			double new_distance;
+//			double old_distance;
+//			if (distance.get(network_node) == null){
+//				old_distance = -1;
+//			} else {
+//				old_distance = distance.get(network_node).cost;
+//			}
+//			for (Node neighbor_node : neighbors.keySet()){
+//				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
+//				double remaining_distance;
+//				
+//				// if the nodes are the same, the distance is 0
+//				if (network_node.equals(neighbor_node)){
+//					remaining_distance = 0.;
+//				}
+//				// avoid possible null pointer exceptions
+//				else if(neighbor_distances == null) {
+//					continue;
+//				}
+//				// avoid possible null pointer exceptions
+//				else if (neighbor_distances.get(neighbor_node) == null){
+//					continue;
+//				}
+//				// ignore neighbors that don't have paths to the node in question
+//				else if (neighbor_distances.get(neighbor_node)
+//						.get(network_node) == null){
+//					continue;
+//				}
+//				// otherwise calculate the estimated distance
+//				else {
+//					remaining_distance = neighbor_distances
+//							.get(neighbor_node)
+//							.get(network_node).cost;
+//				}
+//				new_distance = cost_to_neighbor + remaining_distance;
+//				// check if this is the new shortest path
+//				if (old_distance < 0 || new_distance < old_distance){
+//					print("############################################");
+//					print("Old distance:\t" + old_distance);
+//					print("New distance:\t" + new_distance);
+//					print("Cost to neighbor:\t" + cost_to_neighbor);
+//					print("Remaining distance:\t" + remaining_distance);
+//					Path new_path = new Path(new_distance, neighbor_node);
+//					distance.put(network_node, new_path);
+//					print("New shortest path:\t" + network_node.format() + new_path.format());
+//					changed = true;
+//				}
+//			}
+//		}
+//		if (changed){
+//			routeUpdate();
+//		}
+//	}
 	
     /*************** Utilities & Other ***************/
 	
