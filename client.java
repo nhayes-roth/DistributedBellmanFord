@@ -18,6 +18,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * interface (edit links to neighbors and view the routing table.)
  */
 
+// TODO: BIG, when you disconnect a node, it stays in the network
+
 //TODO: neighbor costs never change. so,what if two nodes are instantiated with different costs to one another?
 class Client implements Runnable {
 
@@ -135,13 +137,15 @@ class Client implements Runnable {
 					 * Checks the neighbor_timers table to see if anyone has
 					 * expired.
 					 */
-					synchronized private void checkNeighborTimers() {
+					private void checkNeighborTimers() {
 						long current_time = System.currentTimeMillis();
 						Set<Node> to_remove = new HashSet<Node>();
-						for (Node n : neighbor_timers.keySet()){
-							long elapsed = current_time - neighbor_timers.get(n);
-							if (elapsed >= 3*timeout){
-								to_remove.add(n);
+						synchronized(neighbor_timers){
+							for (Node n : neighbor_timers.keySet()){
+								long elapsed = current_time - neighbor_timers.get(n);
+								if (elapsed >= 3*timeout){
+									to_remove.add(n);
+								}
 							}
 						}
 						for (Node n : to_remove){
@@ -339,7 +343,7 @@ class Client implements Runnable {
 				try {
 					socket.send(packet);
 				} catch (IOException e) {
-					print("Error - failed to deliver linkdown message.");
+					// ignore
 				}
 				// destroy the connection locally
 				removeNeighbor(neighbor, "linkdown called on ");
@@ -383,8 +387,7 @@ class Client implements Runnable {
 			try {
 				socket.send(packet);
 			} catch (IOException e) {
-				print("Error - routeUpdate encountered an IOException.");
-				e.printStackTrace();
+				// ignore
 			}
 		}
 	}
@@ -566,7 +569,7 @@ class Client implements Runnable {
 	/*
 	 * Removes a neighbor from this client's list of active neighbors:
 	 */
-	private static void removeNeighbor(Node neighbor, String message) {
+	synchronized private static void removeNeighbor(Node neighbor, String message) {
 		print(message + neighbor.toString());
 		if (neighbors.keySet().contains(neighbor)){
 			
@@ -591,12 +594,21 @@ class Client implements Runnable {
 	/*
 	 * Updates the distance table based on the current state of the network.
 	 */
-	private static void updateDistances() {
+	synchronized private static void updateDistances() {
 		
 		boolean any_changed = false;
 		
 		// for each node in the network
 		for (Node network_node : network.keySet()){
+			
+			// recognize if it has no neighbors
+			if (neighbors.size() == 0) {
+				distance.clear();
+			}
+			
+			// skip the client's own node
+			if (network_node.equals(self_node))
+				continue;
 			
 			// values to compare against
 			Path previous_path = distance.get(network_node);
@@ -614,15 +626,22 @@ class Client implements Runnable {
 			// try to find a better estimate
 			for (Node neighbor_node : neighbors.keySet()){
 				
+				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
 				double distance_from_neighbor_to_target;
 				
-				double cost_to_neighbor = neighbors.get(neighbor_node).cost; 
-				try {
-					distance_from_neighbor_to_target = neighbor_distances
-							.get(neighbor_node)
-							.get(network_node).cost;
-				} catch (NullPointerException e) {
-					distance_from_neighbor_to_target = INF;
+				// distance from node to itself is 0
+				if (neighbor_node.equals(network_node)){
+					distance_from_neighbor_to_target = 0;
+				} else {
+					// check for an estimate in neighbor_distances
+					try {
+						distance_from_neighbor_to_target = neighbor_distances
+								.get(neighbor_node)
+								.get(network_node).cost;
+					} catch (NullPointerException e) {
+						// default to infinite
+						distance_from_neighbor_to_target = INF;
+					}
 				}
 				
 				double estimate = cost_to_neighbor + distance_from_neighbor_to_target;
@@ -646,78 +665,6 @@ class Client implements Runnable {
 			routeUpdate();
 		}
 	}
-		
-		
-		
-		
-		
-		
-		
-//	}
-//		for (Node neighbor : neighbor_distances.keySet()){
-//			
-//			network_costs.add(neighbor);
-//			ConcurrentHashMap<Node, Path> table = neighbor_distances.get(neighbor);
-//			for (Node node : table.keySet()){
-//				if (!node.equals(self_node) && !table.get(node).link.equals(self_node)){
-//					network_costs.add(node);
-//				}
-//			}
-//		}
-//		for (Node network_node : network_costs){
-//			double new_distance;
-//			double old_distance;
-//			if (distance.get(network_node) == null){
-//				old_distance = -1;
-//			} else {
-//				old_distance = distance.get(network_node).cost;
-//			}
-//			for (Node neighbor_node : neighbors.keySet()){
-//				double cost_to_neighbor = neighbors.get(neighbor_node).cost;
-//				double remaining_distance;
-//				
-//				// if the nodes are the same, the distance is 0
-//				if (network_node.equals(neighbor_node)){
-//					remaining_distance = 0.;
-//				}
-//				// avoid possible null pointer exceptions
-//				else if(neighbor_distances == null) {
-//					continue;
-//				}
-//				// avoid possible null pointer exceptions
-//				else if (neighbor_distances.get(neighbor_node) == null){
-//					continue;
-//				}
-//				// ignore neighbors that don't have paths to the node in question
-//				else if (neighbor_distances.get(neighbor_node)
-//						.get(network_node) == null){
-//					continue;
-//				}
-//				// otherwise calculate the estimated distance
-//				else {
-//					remaining_distance = neighbor_distances
-//							.get(neighbor_node)
-//							.get(network_node).cost;
-//				}
-//				new_distance = cost_to_neighbor + remaining_distance;
-//				// check if this is the new shortest path
-//				if (old_distance < 0 || new_distance < old_distance){
-//					print("############################################");
-//					print("Old distance:\t" + old_distance);
-//					print("New distance:\t" + new_distance);
-//					print("Cost to neighbor:\t" + cost_to_neighbor);
-//					print("Remaining distance:\t" + remaining_distance);
-//					Path new_path = new Path(new_distance, neighbor_node);
-//					distance.put(network_node, new_path);
-//					print("New shortest path:\t" + network_node.format() + new_path.format());
-//					changed = true;
-//				}
-//			}
-//		}
-//		if (changed){
-//			routeUpdate();
-//		}
-//	}
 	
     /*************** Utilities & Other ***************/
 	
