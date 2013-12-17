@@ -233,52 +233,62 @@ class Client implements Runnable {
 	 * Pretty print all of the client's (living) neighbors.
 	 */
 	private static void showNeighbors() {
+		print("\n---------------------------------");
 		synchronized(neighbors){
 			for(Node neighbor : neighbors.keySet()){
-				print(neighbor.format() + neighbors.get(neighbor));
+				print(neighbor.format() + neighbors.get(neighbor).format());
 			}
 		}
+		print("---------------------------------");
 	}
 	
 	/*
 	 * Pretty print all of the client currently tracked timers.
 	 */
 	private static void showTimers() {
+		print("\n---------------------------------");
 		synchronized(neighbor_timers){
 			for(Node neighbor : neighbor_timers.keySet()){
-				int elapsed = (int)(System.currentTimeMillis()-neighbor_timers.get(neighbor)/1000);
+				long current = System.currentTimeMillis();
+				int elapsed = (int)((current - neighbor_timers.get(neighbor))/1000);
 				print(neighbor.toString() + " --- " + elapsed + "sec");
 			}
 		}
+		print("---------------------------------");
 	}
 	
 	/*
 	 * Pretty print all of the client's departed neighbors.
 	 */
 	private static void showOldNeighbors() {
+		print("\n---------------------------------");
 		synchronized(old_neighbors){
 			for(Node neighbor : old_neighbors.keySet()){
-				print(neighbor.format() + old_neighbors.get(neighbor));
+				print(neighbor.format() + old_neighbors.get(neighbor).format());
 			}
 		}
+		print("---------------------------------");
 	}
 
 	/*
 	 * Pretty print all of the nodes the client is aware of.
 	 */
 	private static void showNetwork() {
+		print("\n---------------------------------");
 		print(self_node.toString() + " (self)");
 		synchronized(network){
 			for(Node node : network.keySet()){
 				print(node.toString() + " (other)");
 			}
 		}
+		print("---------------------------------");
 	}
 
 	/*
 	 * Pretty print all of the currently held neighbor distance tables.
 	 */
 	private static void showNeighborsDistances() {
+		print("\n---------------------------------");
 		synchronized(neighbor_distances){
 			for (Node neighbor : neighbor_distances.keySet()){
 				print(neighbor.toString());
@@ -288,34 +298,7 @@ class Client implements Runnable {
 				}
 			}
 		}
-	}
-	
-	/*
-	 * Allows the user to restore the link to the original value after linkdown()
-	 * or a timeout destroyed it.
-	 */
-	synchronized private static void linkup(String destination){
-		try{
-			Node neighbor = new Node(destination);
-			
-			if (neighbors.containsKey(neighbor)){
-				print("Error - nodes are already neighbors.");
-				
-			} else if (old_neighbors.containsKey(neighbor)){
-				
-				Path old_path = old_neighbors.get(neighbor);	
-				old_neighbors.remove(neighbor);
-				neighbors.put(neighbor, old_path);
-				network.put(neighbor, old_path);
-				neighbor_timers.put(neighbor, System.currentTimeMillis());
-				
-			} else { 
-				print("Error - " + destination + " was never a neighbor.");
-			}
-		} catch (Exception e) {
-			print("Error - exception encountered while attempting to link up.");
-			e.printStackTrace();
-		}
+		print("---------------------------------");
 	}
 	
 	/*
@@ -336,7 +319,34 @@ class Client implements Runnable {
 			print(sb.toString());
 		}
 	}
-
+	
+	/*
+	 * Allows the user to restore the link to the original value after linkdown()
+	 * or a timeout destroyed it.
+	 */
+	synchronized private static void linkup(String destination){
+		try{
+			Node neighbor = new Node(destination);
+			
+			if (neighbors.containsKey(neighbor)){
+				print("Error - nodes are already neighbors.");
+				
+			} else if (old_neighbors.containsKey(neighbor)){
+				Path old_path = old_neighbors.get(neighbor);	
+				old_neighbors.remove(neighbor);
+				neighbors.put(neighbor, old_path);
+				network.put(neighbor, old_path);
+				neighbor_timers.put(neighbor, System.currentTimeMillis());
+				print("linked up to " + neighbor.format() + old_path.format());
+			} else { 
+				print("Error - " + destination + " was never a neighbor.");
+			}
+		} catch (Exception e) {
+			print("Error - exception encountered while attempting to link up.");
+			e.printStackTrace();
+		}
+	}
+	
 	/*
 	 * Allows the user to destroy an existing link (i.e. change cost to infinity).
 	 * Both the current client and the specified neighbor break the connection.
@@ -346,14 +356,10 @@ class Client implements Runnable {
 		try{
 			Node neighbor = new Node (destination);
 			synchronized (neighbors) {
-				try{
-					if (!neighbors.containsKey(neighbor)){
-						print("Error - attempted to linkdown non-neighbor node "
-								+ neighbor.toString());
-						return;
-					}
-				} catch (Exception e) {
-					print("Error - " + destination + " is not a node on this network.");
+				if (!neighbors.containsKey(neighbor)){
+					print("Error - attempted to linkdown non-neighbor node "
+							+ neighbor.toString());
+					return;
 				}
 			}
 			// create the linkdown message
@@ -374,6 +380,7 @@ class Client implements Runnable {
 			// update distances
 			updateDistances();
 		} catch (Exception e) {
+			e.printStackTrace();
 			print("Error - " + destination + " is not a node on this network.");
 		}
 	}
@@ -585,6 +592,7 @@ class Client implements Runnable {
 			// recover old cost if there's a matching old_neighbor
 			if (old_neighbors.keySet().contains(source)) {
 				cost = old_neighbors.get(source).cost;
+				print("linkup message received from " + source.toString());
 			}
 			// otherwise assume the cost provided in the table is accurate
 			else {
@@ -626,7 +634,7 @@ class Client implements Runnable {
 	 */
 	synchronized private static void updateDistances() {
 		
-		boolean any_changed = false;
+		boolean changed = false;
 		
 		// for each node in the network
 		for (Node network_node : network.keySet()){
@@ -651,7 +659,9 @@ class Client implements Runnable {
 				previous_distance = INF;
 			}
 			
-			boolean this_changed = false;
+			// variables to hold minimum values
+			Double best_distance = null;
+			Node best_link = null;
 			
 			// try to find a better estimate
 			for (Node neighbor_node : neighbors.keySet()){
@@ -678,20 +688,33 @@ class Client implements Runnable {
 				
 				// TODO: might have to detect if path changes
 				// if the estimate is lower, or this is new, make a note
-				if (estimate < previous_distance){
-					previous_distance = estimate;
-					previous_link = neighbor_node;
-					this_changed = true;
-					any_changed = true;
+				if (best_distance == null || estimate < best_distance){
+					best_distance = estimate;
+					best_link = neighbor_node;
 				}
 			}
+			// if your best guess is still null, you've got nothing
+			if (best_distance == null)
+				break;
 			// if necessary, change the entry in the distance table
-			if (this_changed){
-				distance.put(network_node, new Path (previous_distance, previous_link));
+			if (previous_distance > best_distance){
+				changed=true;
+				distance.put(network_node, new Path (best_distance, best_link));
 			}
 		}
+		// TODO: new - verify that no distance entries rely on non-neighbors as their link
+		Set<Node> distance_nodes = distance.keySet();
+		Set<Node> neighbor_nodes = neighbors.keySet();
+		for (Node destination : distance_nodes){
+			Node link = distance.get(destination).link;
+			if (!neighbor_nodes.contains(link)){
+				distance.remove(destination);
+				changed = true;
+			}
+		}
+		
 		// if any distance entry changed, send the table to all neighbors
-		if (any_changed){
+		if (changed){
 			routeUpdate();
 		}
 	}
