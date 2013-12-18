@@ -15,12 +15,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Assignment: Programming Assignment #3
  * ------------
  * Clients perform the distributed distance computation and support a user 
- * interface (edit links to neighbors and view the routing table.)
+ * interface.
  */
 
-// TODO: BIG, when you disconnect a node, it stays in the network
-
-//TODO: neighbor costs never change. so,what if two nodes are instantiated with different costs to one another?
 class Client implements Runnable {
 
     /*************** Class Variables ***************/
@@ -48,6 +45,7 @@ class Client implements Runnable {
 
 	public static void main(String[] args) throws Exception {
 		setup(args);
+		routeUpdate();
 		startTimers();
 		startSending();
 		startListening();
@@ -99,6 +97,7 @@ class Client implements Runnable {
 			neighbors.put(destination, cost);
 			distance.put(destination, cost);
 			network.put(destination, cost);
+			routeUpdate();
 		}
 	}
 
@@ -143,7 +142,6 @@ class Client implements Runnable {
 						long current_time = System.currentTimeMillis();
 						Set<Node> to_remove = new HashSet<Node>();
 						synchronized(neighbor_timers){
-							// TODO: this might lock it because it checks too frequently
 							for (Node n : neighbor_timers.keySet()){
 								long elapsed = current_time - neighbor_timers.get(n);
 								if (elapsed >= 3*timeout){
@@ -410,8 +408,11 @@ class Client implements Runnable {
 	 * Send a copy of the current distance estimates to all of the client's neighbors.
 	 */
 	protected static void routeUpdate() {
+		routeUpdate(distance);
+	}
+	protected static void routeUpdate(ConcurrentHashMap<Node, Path> table){
 		// construct the byte array
-		byte[] bytes = tableToBytes(distance);
+		byte[] bytes = tableToBytes(table);
 		DatagramPacket packet = null;
 		// send it to each neighbor
 		synchronized(neighbors){
@@ -430,7 +431,6 @@ class Client implements Runnable {
 	 * Convert a ConcurrentHashMap to a byte[] for transferral.
 	 */
 	private static byte[] tableToBytes(ConcurrentHashMap<Node, Path> table){
-		// TODO: don't think this is actually a necessary synch
 		synchronized (distance) {
 			ByteArrayOutputStream stream = new ByteArrayOutputStream();
 			ObjectOutput out = null;
@@ -554,7 +554,7 @@ class Client implements Runnable {
 	 */
 	private static void readRouteUpdateMessage(Node source, ConcurrentHashMap<Node, Path> table) {
 		
-		// if this is the first message, add the source neighbors
+		// if this is the first message, add the source as a neighbor neighbors
 		firstContact(source, table);
 		synchronized(neighbor_distances) {
 			// store the neighbor's distance table
@@ -636,13 +636,25 @@ class Client implements Runnable {
 		
 		boolean changed = false;
 		
+		// No distance entry can link through non-neighbors as their link
+		Set<Node> distance_nodes = distance.keySet();
+		Set<Node> neighbor_nodes = neighbors.keySet();
+		for (Node destination : distance_nodes){
+			Node link = distance.get(destination).link;
+			if (!neighbor_nodes.contains(link)){
+				distance.remove(destination);
+				changed = true;
+			}
+		}
+		
+		// recognize if Client has no neighbors
+		if (neighbors.size() == 0) {
+			distance.clear();
+		}
+		
 		// for each node in the network
 		for (Node network_node : network.keySet()){
-			
-			// recognize if it has no neighbors
-			if (neighbors.size() == 0) {
-				distance.clear();
-			}
+
 			
 			// skip the client's own node
 			if (network_node.equals(self_node))
@@ -651,10 +663,8 @@ class Client implements Runnable {
 			// values to compare against
 			Path previous_path = distance.get(network_node);
 			Double previous_distance = null;
-			Node previous_link = null;
 			try {
 				previous_distance = previous_path.cost;
-				previous_link = previous_path.link;
 			} catch (NullPointerException e) {
 				previous_distance = INF;
 			}
@@ -686,7 +696,6 @@ class Client implements Runnable {
 				
 				double estimate = cost_to_neighbor + distance_from_neighbor_to_target;
 				
-				// TODO: might have to detect if path changes
 				// if the estimate is lower, or this is new, make a note
 				if (best_distance == null || estimate < best_distance){
 					best_distance = estimate;
@@ -702,17 +711,6 @@ class Client implements Runnable {
 				distance.put(network_node, new Path (best_distance, best_link));
 			}
 		}
-		// TODO: new - verify that no distance entries rely on non-neighbors as their link
-		Set<Node> distance_nodes = distance.keySet();
-		Set<Node> neighbor_nodes = neighbors.keySet();
-		for (Node destination : distance_nodes){
-			Node link = distance.get(destination).link;
-			if (!neighbor_nodes.contains(link)){
-				distance.remove(destination);
-				changed = true;
-			}
-		}
-		
 		// if any distance entry changed, send the table to all neighbors
 		if (changed){
 			routeUpdate();
