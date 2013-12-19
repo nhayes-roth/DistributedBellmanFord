@@ -420,6 +420,7 @@ class Client implements Runnable {
 				packet = new DatagramPacket(bytes, bytes.length, neighbor.address, neighbor.port);
 				try {
 					socket.send(packet);
+					print("Message sent to " + neighbor.port);
 				} catch (IOException e) {
 					// ignore
 				}
@@ -502,6 +503,7 @@ class Client implements Runnable {
 		}
 		// otherwise treat it like a route update 
 		else {
+			print("route update message received from " + source.port);
 			readRouteUpdateMessage(source, table);
 		}
 	}
@@ -554,7 +556,7 @@ class Client implements Runnable {
 	 */
 	private static void readRouteUpdateMessage(Node source, ConcurrentHashMap<Node, Path> table) {
 		
-		// if this is the first message, add the source as a neighbor neighbors
+		// if this is the first message, add the source as a neighbor
 		firstContact(source, table);
 		synchronized(neighbor_distances) {
 			// store the neighbor's distance table
@@ -706,8 +708,11 @@ class Client implements Runnable {
 			if (best_distance == null)
 				break;
 			// if necessary, change the entry in the distance table
-			if (previous_distance > best_distance){
+			if (!previous_distance.equals(best_distance)){
 				changed=true;
+				print(previous_distance + "------>>>" + best_distance);
+				print("network node: " + network_node.toString());
+				print("   best link: " + best_link.toString()); 
 				distance.put(network_node, new Path (best_distance, best_link));
 			}
 		}
