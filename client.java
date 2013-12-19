@@ -134,34 +134,33 @@ class Client implements Runnable {
 					public void run(){
 						checkNeighborTimers();
 					}
-
-					/*
-					 * Checks the neighbor_timers table to see if anyone has
-					 * expired.
-					 */
-					private void checkNeighborTimers() {
-						long current_time = System.currentTimeMillis();
-						Set<Node> to_remove = new HashSet<Node>();
-						synchronized(neighbor_timers){
-							for (Node n : neighbor_timers.keySet()){
-								long elapsed = current_time - neighbor_timers.get(n);
-								if (elapsed >= 3*timeout){
-									to_remove.add(n);
-								}
-							}
-						}
-						for (Node n : to_remove){
-							removeNeighbor(n, "timeout detected on ");
-							// update distances
-							updateDistances();
-						}
-						
-					}
 				};
 				timer.schedule(task, 1000, 1000);
 			}
 		};
 		thread.start();
+	}
+	
+	/*
+	 * Checks the neighbor_timers table to see if anyone has
+	 * expired.
+	 */
+	private static void checkNeighborTimers() {
+		long current_time = System.currentTimeMillis();
+		Set<Node> to_remove = new HashSet<Node>();
+		synchronized(neighbor_timers){
+			for (Node n : neighbor_timers.keySet()){
+				long elapsed = current_time - neighbor_timers.get(n);
+				if (elapsed >= 3*timeout){
+					to_remove.add(n);
+				}
+			}
+			for (Node n : to_remove){
+				removeNeighbor(n, "timeout detected on ");
+				// update distances
+				updateDistances();
+			}
+		}
 	}
 	
     /*************** Interpret Instructions ***************/
@@ -653,6 +652,9 @@ class Client implements Runnable {
 		// recognize if Client has no neighbors
 		if (neighbors.size() == 0) {
 			distance.clear();
+			network.clear();
+			neighbor_distances.clear();
+			neighbor_timers.clear();
 		}
 		
 		// for each node in the network
